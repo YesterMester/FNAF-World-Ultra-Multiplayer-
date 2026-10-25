@@ -76,11 +76,13 @@ Co-op battles: every attack turn belongs to one player. The player whose turn it
 is picks the attack on their controller (D-pad/stick up and down, then A); the
 bottom line shows "P2: ..." etc. With 2 controllers, P1 plays slots 1 and 3 and
 P2 slots 2 and 4; with 3 or 4 controllers the turns are spread over everyone.
-The mouse still works for any turn.
+Release A before confirming a new turn. Offline mouse assistance works for any
+turn; online the host's mouse can choose attacks for P1's assigned slots.
 
 F9 (while exploring): the keyboard/mouse player becomes Player 1 and the
 controllers become Players 2-4 (press again to switch back). Handy when the
-host plays with mouse and keyboard and a friend joins over the internet.
+host plays with mouse and keyboard and friends use local controllers. Native
+online sessions assign one player per computer automatically and ignore F9.
 
 Playing online: click Online co-op or
 press F10. Host game makes a visible lobby; leave Code empty for an open lobby,

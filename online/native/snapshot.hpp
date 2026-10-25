@@ -16,7 +16,7 @@ struct Entity {
     uint16_t sprite_layer = 0;
     int32_t z = 0;
     uint8_t type = 2, direction = 0;
-    int32_t x = 0, y = 0, image = 0, animation = 0;
+    int32_t x = 0, y = 0, image = 0, animation = 0; // image is the original file handle, not a runtime index
     float scale_x = 1, scale_y = 1, angle = 0;
     uint32_t effect = 0, effect_param = 0;
     double value = 0;
@@ -60,7 +60,7 @@ struct Reader {
 inline std::vector<uint8_t> encode(const Snapshot& s) {
     if (s.entities.size() > 4096) throw std::runtime_error("Too many visible objects.");
     Writer w;
-    w.put<uint8_t>(0x53); w.put<uint8_t>(5); w.put<uint16_t>(s.frame); w.put<uint32_t>(s.sequence);
+    w.put<uint8_t>(0x53); w.put<uint8_t>(6); w.put<uint16_t>(s.frame); w.put<uint32_t>(s.sequence);
     w.put<int32_t>(s.camera_x); w.put<int32_t>(s.camera_y);
     w.put<uint16_t>(s.width); w.put<uint16_t>(s.height); w.put<uint32_t>(s.background);
     if (s.layers.size() > 128) throw std::runtime_error("Too many world layers.");
@@ -97,7 +97,7 @@ inline std::vector<uint8_t> encode(const Snapshot& s) {
 inline Snapshot decode(const std::vector<uint8_t>& data) {
     if (data.size() > max_packet) throw std::runtime_error("World state is too large.");
     Reader r{data}; Snapshot s;
-    if (r.get<uint8_t>() != 0x53 || r.get<uint8_t>() != 5) throw std::runtime_error("Incompatible world state.");
+    if (r.get<uint8_t>() != 0x53 || r.get<uint8_t>() != 6) throw std::runtime_error("Incompatible world state.");
     s.frame = r.get<uint16_t>(); s.sequence = r.get<uint32_t>();
     s.camera_x = r.get<int32_t>(); s.camera_y = r.get<int32_t>();
     s.width = r.get<uint16_t>(); s.height = r.get<uint16_t>();

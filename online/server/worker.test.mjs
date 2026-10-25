@@ -51,7 +51,7 @@ test('worker: lobbies, PIN, state, controls and audio pass through the Durable O
 });
 test('worker: health and unknown paths', async () => {
   const health = await (await fetch(`http://127.0.0.1:${port}/health`)).json();
-  assert.equal(health.ok, true); assert.equal(health.protocol, 2); assert.equal(health.today.limit, 1000000);
+  assert.equal(health.ok, true); assert.equal(health.protocol, 2); assert.equal(health.today.limit, 1800000);
   assert.equal((await fetch(`http://127.0.0.1:${port}/`)).status, 404);
   assert.equal((await fetch(`http://127.0.0.1:${port}/lobbies`)).status, 426);
 });

@@ -17,7 +17,7 @@ import zlib
 
 from . import fusion
 from .ccn import Game, Reader
-from .evb import (F_MAX, F_TOSTRING, Ids, act, a_add_gv, a_set_gv, clone, cond, c_gv, expr, group,
+from .evb import (F_MAX, F_MIN, F_TOSTRING, Ids, act, a_add_gv, a_set_gv, clone, cond, c_gv, expr, group,
                   p_cmp, p_expr, t_altval, t_close, t_ext, t_func, t_gv, t_long, t_objcount,
                   t_op, t_comma)
 from .fusion import (Instance, NewChunk, ObjectDef, Param, build_object_chunks, parse_frames,
@@ -150,7 +150,7 @@ class Merger:
     def setup_globals(self):
         """Global values used by the added logic (appended after Ultra's own)."""
         names = ["pads", "players", "turn_slot", "turn_owner", "turn_mask", "selected", "confirmed",
-                 "keyboard_p1", "walk_mask"]
+                 "keyboard_p1", "walk_mask", "confirm_ready", "previous_mask"]
         for k in (2, 3, 4):
             names += ["p%d_mask" % k, "p%d_active" % k, "p%d_moving" % k]
         self.G = {n: self.alloc_global("mp_" + n) for n in names}
@@ -337,7 +337,23 @@ class Merger:
         G = self.G
         G_NP, G_NPL, G_SLOT, G_OWN = G["pads"], G["players"], G["turn_slot"], G["turn_owner"]
         G_MASK, G_SEL, G_CONF, G_KB = G["turn_mask"], G["selected"], G["confirmed"], G["keyboard_p1"]
+        G_READY, G_PREV = G["confirm_ready"], G["previous_mask"]
         mask = (t_gv(G_MASK),)
+        def owner_actions():
+            # Keep Ultra's selected character intact: starting a nested fastloop
+            # here resets the caller's object selection in the compiled runtime.
+            return [
+                a_set_gv(G_OWN, t_func(F_MAX), t_gv(G_SLOT), t_comma(), t_long(1), t_close(),
+                         t_op("-"), t_long(1)),
+                a_set_gv(G_OWN, t_gv(G_OWN), t_op("mod"), t_gv(G_NPL)),
+                # With keyboard P1, controller bits start at player 2. The two
+                # Min gates make the keyboard's turn (or no controller) mask 0.
+                a_set_gv(G_MASK, t_long(2), t_op("^"), t_func(F_MAX), t_gv(G_OWN), t_op("-"),
+                         t_gv(G_KB), t_comma(), t_long(0), t_close(),
+                         t_op("*"), t_func(F_MIN), t_long(1), t_comma(), t_gv(G_NP), t_close(),
+                         t_op("*"), t_func(F_MIN), t_long(1), t_comma(), t_gv(G_OWN), t_op("+"),
+                         t_long(1), t_op("-"), t_gv(G_KB), t_close()),
+            ]
 
         movb = X("mov button")
         plr = X("plr character")
@@ -349,8 +365,8 @@ class Merger:
                                         b"c\0r\0e\0a\0t\0e\0 \0b\0u\0t\0t\0o\0n" in a.params[0].data
                                         for a in g.actions))
         start = b0[k]
-        start.actions.insert(0, a_set_gv(G_SLOT, t_altval(T(plr), plr, 0)))
-        start.actions.insert(1, a_set_gv(G_SEL, t_long(0)))
+        start.actions[0:0] = [a_set_gv(G_SLOT, t_altval(T(plr), plr, 0)),
+                              a_set_gv(G_SEL, t_long(0)), a_set_gv(G_READY, t_long(0))] + owner_actions()
 
         # --- 2. remember each attack button's position in the list
         k = self.find(b0, lambda g: any(c.object_type == -1 and c.num == -16 and
@@ -371,18 +387,12 @@ class Merger:
                          line=self.next_line()))
         top.append(group([c_gv(ids, G_NPL, "=", t_long(0))], [a_set_gv(G_NPL, t_long(1))],
                          line=self.next_line()))
-        top.append(group([cond(ids, -1, -1)],
-                         [a_set_gv(G_OWN, t_func(F_MAX), t_gv(G_SLOT), t_comma(), t_long(1), t_close(),
-                                   t_op("-"), t_long(1))], line=self.next_line()))
-        top.append(group([cond(ids, -1, -1)],
-                         [a_set_gv(G_OWN, t_gv(G_OWN), t_op("mod"), t_gv(G_NPL))], line=self.next_line()))
-        for own in range(4):
-            top.append(group([c_gv(ids, G_KB, "=", t_long(0)), c_gv(ids, G_NP, ">", t_long(0)),
-                              c_gv(ids, G_OWN, "=", t_long(own))],
-                             [a_set_gv(G_MASK, t_long(1 << own))], line=self.next_line()))
-        for own in range(1, 4):
-            top.append(group([c_gv(ids, G_KB, "=", t_long(1)), c_gv(ids, G_OWN, "=", t_long(own))],
-                             [a_set_gv(G_MASK, t_long(1 << (own - 1)))], line=self.next_line()))
+        # Assign at frame start and synchronously at the turn-opening action.
+        # A mask calculated only at frame start belongs to the previous turn
+        # for one frame, allowing held input from the wrong player to confirm.
+        top.append(group([cond(ids, -1, -1)], owner_actions(), line=self.next_line()))
+        top.append(group([c_gv(ids, G_PREV, "<>", t_gv(G_MASK))],
+                         [a_set_gv(G_READY, t_long(0)), a_set_gv(G_PREV, t_gv(G_MASK))], line=self.next_line()))
         # F9: keyboard/mouse becomes player 1 (or back); a sound tells which way
         f9 = struct.pack("<HH", KEY_F9, 0)
         on_snd = self.find_sound_action(f, "PREL_LOGO_SPARKLE_PO0")
@@ -411,7 +421,10 @@ class Merger:
         touch = b0[k]
         grp_flags, rc = touch.flags, touch.restrict_cpt
         count_gt0 = lambda: cond(ids, T(movb), -32, movb, [p_cmp(">", t_long(0))])
-        nav = []
+        # A button held before a turn opens must be released before confirming
+        # that turn. This also protects reassignment after a player leaves.
+        nav = [group([count_gt0(), self.pad_cond(ids, PAD_A, mask, negate=True)],
+                     [a_set_gv(G_READY, t_long(1))], flags=grp_flags, line=self.next_line(), restrict_cpt=rc)]
         for padc, exp, op, delta in ((PAD_UP, EXP_LV, "<", -1), (PAD_DOWN, EXP_LV, ">", 1)):
             for alt in (("pad", padc), ("stick", exp, op, STICK if op == ">" else -STICK)):
                 conds = self.alt_conds(ids, alt, mask) + [cond(ids, -1, -7), count_gt0()]
@@ -457,7 +470,7 @@ class Merger:
              act(T(desc), 27, desc)],
             flags=hg.flags, line=self.next_line(), restrict_cpt=hg.restrict_cpt))
         # confirm with A: same as clicking the highlighted button
-        confirm_conds = [self.pad_cond(ids, PAD_A, mask), cond(ids, -1, -7),
+        confirm_conds = [self.pad_cond(ids, PAD_A, mask), c_gv(ids, G_READY, "=", t_long(1)), cond(ids, -1, -7),
                          cond(ids, T(movb), -27, movb, [Param(50, struct.pack("<hi", IDX, 0)),
                                                          p_cmp("=", t_gv(G_SEL))], other=32)]
         for c in touch.conditions[1:]:

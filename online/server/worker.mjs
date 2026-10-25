@@ -21,7 +21,7 @@ export class Lobby extends DurableObject {
     if (!secret) { secret = randomHex(32); put('secret', secret); }
     this.peers = new Map();
     this.lobby = createLobby({
-      secret, maxRooms: 8, dailyMessages: Number(env.DAILY_MESSAGE_LIMIT) || 1000000,
+      secret, maxRooms: 8, dailyMessages: Number(env.DAILY_MESSAGE_LIMIT) || 1800000,
       usage: JSON.parse(get('usage') ?? 'null'), saveUsage: usage => put('usage', JSON.stringify(usage)),
       pinAttempts: JSON.parse(get('pin-attempts') ?? '[]'),
       savePinAttempts: attempts => put('pin-attempts', JSON.stringify(attempts)),

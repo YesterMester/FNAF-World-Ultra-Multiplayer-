@@ -5,7 +5,7 @@ import struct
 import sys
 from pathlib import Path
 
-from .evb import Ids, act, a_set_gv, c_compare, clone, cond, expr, group, p_expr, t_ext, t_close, t_long, t_objexp
+from .evb import Ids, act, a_set_gv, c_compare, clone, cond, expr, group, p_expr, t_ext, t_close, t_long, t_objexp, t_gv
 from .fusion import EXPR_PARAM_CODES, ObjectDef, Param
 from .merge import MergeError
 
@@ -110,6 +110,7 @@ def add_online(m, module):
             offset += size
         parameter.data = bytes(data)
 
+    move_buttons = {ob.index for ob in m.objs if ob.name == "mov button"}
     for frame_index, f in enumerate(m.frames):
         ids = Ids(f)
         original_groups = {id(g) for g in f.events.groups}
@@ -134,6 +135,14 @@ def add_online(m, module):
             if len(gated) > 255:
                 raise MergeError("too many conditions in an event after adding online mode")
             g.conditions = gated
+            if any(c.object_type == -6 and c.num == -1 and any(p.code == 14 and
+                   struct.unpack_from("<H", p.data)[0] == 120 for p in c.params) for c in g.conditions):
+                # Native sessions already assign one player per computer.
+                g.conditions.append(cond(ids, otype, -81 - 22, o.index, other=1))
+            if any(c.object_type >= 32 and c.num == -87 and m._objparam(c) in move_buttons for c in g.conditions):
+                # The host's mouse follows the same owner as controller input.
+                # Offline mouse assistance retains its original behavior.
+                g.conditions.append(cond(ids, otype, -81 - 32, o.index, [p_expr(t_gv(m.G["turn_mask"]))]))
             actions = []
             for a in g.actions:
                 actions.append(a)

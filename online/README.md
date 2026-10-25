@@ -58,7 +58,7 @@ SQLite-backed object automatically. Use the displayed `workers.dev` URL with
 `wss://` and `/lobbies`, for example `wss://fwum-relay.example.workers.dev/lobbies`.
 
 The free deployment allows eight lobbies and 64 connected players/browsers.
-It refuses new rooms/joins after one million incoming messages in a UTC day to
+It refuses new rooms/joins after 1.8 million incoming messages in a UTC day to
 reserve some quota for running games. Running games can still exhaust the
 remaining provider quota; this is a capacity cushion, not an uptime guarantee.
 `/health` reports the current message count and limit.
@@ -70,8 +70,10 @@ PIN attempt limits also survive hibernation; PINs are stored as keyed hashes
 and never included in public listings. Resume tokens stay in game memory.
 
 Only the host sends world state, and it stops doing so when alone. Guests send
-control changes promptly and refresh unchanged controls every 150 ms. This
-reduces idle traffic while preserving the host's stuck-input timeout.
+control changes promptly and refresh unchanged controls every 500 ms. Stick
+noise inside the movement dead zone is ignored. World state updates every
+50 ms during input or battles and every 100 ms while idle. Disconnected controls
+are released after one second, and a confirmed disconnect releases them at once.
 
 Once deployed, set the repository's Actions variable **FWUM_RELAY_URL** to the
 public endpoint and rebuild the patchers. Both patchers bundle the same native
@@ -148,6 +150,10 @@ The existing patcher self-test verifies modified game chunks and their checksum.
 npm test --prefix online/server
 g++ -std=c++17 -O2 online/native/snapshot_test.cpp -o /tmp/fwum-snapshot-test
 /tmp/fwum-snapshot-test
+g++ -std=c++17 -O2 online/native/input_test.cpp -o /tmp/fwum-input-test
+/tmp/fwum-input-test
+g++ -std=c++17 -O2 online/native/images_test.cpp -o /tmp/fwum-images-test
+/tmp/fwum-images-test
 python3 patcher/selftest.py --game "/path/to/Fnaf World Ultra.dat"
 ```
 
@@ -158,7 +164,9 @@ processes under Proton 11 through Steam Linux Runtime 4. The checks include:
 - Normal new-game setup, host save continuation and guest save preservation.
 - Independent walkers and complete battles, with each of P1-P4 confirming their
   own turns. Two additional protocol clients exercise P3/P4 alongside the two
-  real game processes; P1 cannot confirm another player's turn.
+  real game processes; P1 cannot confirm another player's turn with either the
+  keyboard or mouse. Held confirm requires a release when a new turn opens,
+  party switching preserves ownership, and F9 cannot reassign native seats.
 - Late joins, guest leave/rejoin and host closure returning guests to their own title.
 - Actual text/counter readback, including newly created objects, negative values
   and signed 32-bit limits. The format checks cover all 39 game frames.
@@ -171,6 +179,13 @@ The renderer sends bounded scalar shader state and display geometry, while each
 client creates effects and loads textures locally. Music loops, channel volume
 and pause state are restored on midgame joins and reconnects. No GPU pointers,
 video streams, game assets or save files travel through the relay.
+
+Active sprites use the original file image handles on the wire. Fusion assigns
+different compact image-bank indices after frame loads, so sending a host's
+runtime index can show an unrelated character or attack on a guest. Each side
+translates through its own image-bank tables; snapshot format 6 rejects the old
+index-based format. Image mapping checks exercise all 720 permutations of a
+client bank plus unloaded and invalid handles.
 
 For private lab diagnostics, add `diagnostics=C:\path\to\fwum.log` under
 `[online]` in `FWUM-online.ini`. It logs frame transitions and snapshot counts;

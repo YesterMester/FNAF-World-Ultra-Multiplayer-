@@ -33,7 +33,7 @@ on your computer.
   The mouse, touch and keyboard controls keep working as before.
 * **Co-op battles.** Every attack turn belongs to a player. When it is your character's turn,
   pick the attack on *your* controller. The attack list highlights your choice and the line at
-  the bottom shows whose turn it is (`P2: ...`).
+  the bottom shows whose turn it is (`P2: ...`). Release A before confirming a new turn.
 * Turns are shared out over however many controllers are plugged in:
   * 1 controller: you play every turn
   * 2 controllers: P1 plays party slots 1 and 3, P2 plays slots 2 and 4
@@ -145,7 +145,8 @@ provide remote controllers; the native lobby mode uses a separate game copy on e
   and Switch controllers work through Steam Input (add the game to Steam) or DS4Windows.
   A controller plugged in while the game runs is picked up after a few seconds.
 * **A turn won't accept my button.** It's someone else's turn. Look at the `P#:` line at
-  the bottom of the screen. The mouse can still pick any turn.
+  the bottom of the screen, then release and press confirm. In online play the
+  host's mouse follows the same turn ownership; offline mouse assistance can pick any turn.
 * **The patcher says an event wasn't found.** FNaF World Ultra probably updated and moved
   something the patcher hooks into. The patcher stops instead of building a broken game.
   Open an issue, or point the patcher at the tested Ultra version (3.0.9).

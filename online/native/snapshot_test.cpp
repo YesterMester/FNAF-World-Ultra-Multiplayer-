@@ -14,6 +14,10 @@ int main() {
     s.entities.push_back(freddy);
     s.music.push_back({48, 32771, 75, true});
     auto data = fwum::encode(s); auto result = fwum::decode(data);
+    auto old_format = data; old_format[1] = 5;
+    bool old_rejected = false;
+    try { fwum::decode(old_format); } catch (const std::runtime_error&) { old_rejected = true; }
+    assert(old_rejected);
     assert(result.frame == 4 && result.sequence == 52 && result.camera_x == 700);
     assert(result.entities[0].image == 901 && result.entities[0].value == 9.5 && result.entities[0].text == freddy.text);
     assert(result.layers[0].x == 100 && result.layers[0].flags == 16);
