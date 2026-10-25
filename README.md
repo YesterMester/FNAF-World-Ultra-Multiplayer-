@@ -7,6 +7,10 @@ online play for up to **four players**. Open **Online co-op** or press **F10**,
 choose **Host game**, and friends can find your lobby in the game. Leave the code
 empty for an open game, or protect it with exactly **four digits**.
 
+**Download the latest patcher:**
+[Windows](https://github.com/YesterMester/FNAF-World-Ultra-Multiplayer-/releases/latest/download/FWUM-Patcher-Windows.exe) ·
+[Steam Deck / Linux](https://github.com/YesterMester/FNAF-World-Ultra-Multiplayer-/releases/latest/download/FWUM-Patcher-Linux-SteamDeck)
+
 The free public lobby service is included in the official patchers. Each player
 runs their own copy of the game; the host owns the save and operates mouse menus.
 See [online details and testing](online/README.md).
