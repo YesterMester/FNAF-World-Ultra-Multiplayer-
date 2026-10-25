@@ -265,6 +265,16 @@ void network() {
         }
     }
 }
+void safe_network() {
+    try { network(); }
+    catch (const std::exception& e) {
+        auto& c = ctx();
+        c.message = L"The lobby sent an invalid response. Please reconnect.";
+        log(e.what()); c.connected = false; c.connection_failed = true;
+        if (c.connection) c.connection->stop();
+        release_session(); refresh_ui();
+    }
+}
 fwum::Snapshot capture() {
     auto& c = ctx(); auto rh = header(); fwum::Snapshot state;
     state.frame = c.frame; state.sequence = ++c.sequence;
@@ -452,6 +462,7 @@ void connect(bool automatic) {
 }
 LRESULT CALLBACK menu_proc(HWND window, UINT message, WPARAM w, LPARAM l) {
     auto& c = ctx();
+    if (message == WM_TIMER && w == 1) { if (header()) safe_network(); return 0; }
     if (message == WM_CLOSE) { ShowWindow(window, SW_HIDE); return 0; }
     if (message == WM_COMMAND) {
         const int id = LOWORD(w);
@@ -511,6 +522,9 @@ void menu() {
         SendDlgItemMessageW(c.window, 102, EM_SETLIMITTEXT, 40, 0);
     }
     refresh_ui(); ShowWindow(c.window, SW_SHOW); SetForegroundWindow(c.window);
+    // The engine can pause its frame events while an owned menu has focus.
+    // Keep the lobby responsive on the UI thread during that pause as well.
+    SetTimer(c.window, 1, 50, nullptr);
     if (!c.connection) connect();
 }
 }
@@ -595,12 +609,7 @@ template<int N> long WINAPI expression(LPHO ho, long param) {
 short WINAPI begin(LPHO ho, long frame, long) {
     auto& c = ctx(); c.data = reinterpret_cast<Data*>(ho);
     if (c.frame != frame) { c.mapping.clear(); c.applied_sequence = uint32_t(-1); c.frame = int(frame); log("frame " + std::to_string(frame) + " objects=" + std::to_string(objects().size())); }
-    try { network(); }
-    catch (const std::exception& e) {
-        c.message = L"The lobby sent an invalid response. Please reconnect.";
-        log(e.what()); c.connected = false; c.connection_failed = true;
-        if (c.connection) c.connection->stop(); release_session(); refresh_ui();
-    }
+    safe_network();
     return 0;
 }
 short WINAPI finish(LPHO, long, long) {
