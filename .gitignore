@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+build/
+dist/
+*.spec
+fwum-downloads/
+FNaF World Ultra Multiplayer/

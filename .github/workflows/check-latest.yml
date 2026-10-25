@@ -1,0 +1,19 @@
+name: Check against the latest game versions
+
+on:
+  schedule:
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+
+jobs:
+  merge:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Download both games from Game Jolt and build the merge
+        run: python patcher/patch.py --download --downloads "$RUNNER_TEMP/dl" --out "$RUNNER_TEMP/out"
+      - name: Re-read the merged game
+        run: python patcher/selftest.py --game "$RUNNER_TEMP/out/Fnaf World Ultra.dat"

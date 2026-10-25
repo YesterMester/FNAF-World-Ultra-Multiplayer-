@@ -1,0 +1,62 @@
+name: Build patcher
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            name: FWUM-Patcher-Windows
+          - os: ubuntu-22.04
+            name: FWUM-Patcher-Linux-SteamDeck
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Tcl/Tk for the patcher window
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y tcl8.6 tk8.6
+      - name: Install PyInstaller
+        run: |
+          python -m pip install pyinstaller==6.10.0 certifi==2024.8.30
+          python -c "import tkinter; print('Tk', tkinter.TkVersion)"
+      - name: Self-test (format code, no game files needed)
+        run: python patcher/selftest.py
+      - name: Build
+        run: pyinstaller --onefile --windowed --name ${{ matrix.name }} --paths patcher patcher/patch.py
+      - name: Check the Linux build starts
+        if: runner.os == 'Linux'
+        run: ./dist/${{ matrix.name }} --help
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}
+          path: dist/*
+
+  release:
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+      - name: Make the Linux build executable
+        run: chmod +x dist/FWUM-Patcher-Linux-SteamDeck/*
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: FNaF World Ultra Multiplayer patcher (latest)
+          body: Download the patcher for your system, run it, and it builds FNaF World Ultra Multiplayer. See the README for details.
+          files: |
+            dist/FWUM-Patcher-Windows/*
+            dist/FWUM-Patcher-Linux-SteamDeck/*
