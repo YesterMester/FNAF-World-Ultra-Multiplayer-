@@ -5,7 +5,7 @@ import struct
 import sys
 from pathlib import Path
 
-from .evb import Ids, act, a_set_gv, c_compare, clone, cond, expr, group, p_expr, t_ext, t_close, t_long
+from .evb import Ids, act, a_set_gv, c_compare, clone, cond, expr, group, p_expr, t_ext, t_close, t_long, t_objexp
 from .fusion import EXPR_PARAM_CODES, ObjectDef, Param
 from .merge import MergeError
 
@@ -101,13 +101,13 @@ def add_online(m, module):
         blocks = m.blocks(f)
         expression = lambda idx: (t_ext(otype, idx, o.index), t_close())
         condition = lambda idx, *params: cond(ids, otype, -81 - idx, o.index, params,
-                                              flags=0 if idx in (18, 19, 20, 23, 24) else 32)
+                                              flags=0 if idx in (18, 19, 20, 23, 24, 26) else 32)
         def callback(idx, value):
             # Fusion can treat the first triggered condition as already true.
             # Filter the callback explicitly, then select its precise instance.
             expression_index = 7 if idx == 18 else 9 if idx == 23 else 8
             conditions = [condition(idx), c_compare(ids, expression(expression_index), "=", (t_long(value),))]
-            if idx in (19, 20, 24):
+            if idx in (19, 20, 24, 26):
                 conditions.append(condition(25))
             return conditions
         blocks[0][0:0] = [
@@ -143,6 +143,8 @@ def add_online(m, module):
             if typ == 7:
                 blocks[-1].append(group(callback(24, oi), [
                     act(typ, 80, oi, [p_expr(*expression(6))])]))
+                blocks[-1].append(group(callback(26, oi), [
+                    act(otype, 85, o.index, [p_expr(t_objexp(7, 80, oi))])]))
             blocks[-1].append(group(callback(20, oi), [act(typ, 27, oi)]))
         blocks[-1].extend([
             group([cond(ids, otype, -81 - 16, o.index, other=1)], [

@@ -27,9 +27,61 @@ to fire, R to flee, Tab for the map and E to switch parties. The host operates
 the game's mouse menus. Each computer contributes one player in native mode;
 the existing four-controller local mode remains available outside a session.
 
-## Run a relay
+## Free public relay
 
-The relay is a small Node 22 service. It holds lobbies and the latest visible
+The public relay can run on Cloudflare's **Workers Free** plan, using a
+SQLite-backed Durable Object. The WebSocket Hibernation API keeps idle
+connections open while the object sleeps; players do not wait for a server to
+spin up after 15 minutes. No paid server, database or custom domain is needed.
+
+Free hosting has limits. Cloudflare includes 100,000 Durable Object request
+units per day and 13,000 GB-s of duration; incoming WebSocket messages count at
+a 20:1 ratio for request billing. Exceeding a free limit can stop operations
+until the daily reset. Provider outages and deployments can also interrupt
+connections. **This does not guarantee zero downtime.** See the official
+[pricing](https://developers.cloudflare.com/durable-objects/platform/pricing/)
+and [WebSocket hibernation](https://developers.cloudflare.com/durable-objects/best-practices/websockets/) docs.
+
+Deploy from a free Cloudflare account:
+
+```sh
+cd online/server
+npm ci --ignore-scripts
+npm test
+npx wrangler login
+npx wrangler deploy
+```
+
+Keep the account on Workers Free. The supplied `wrangler.jsonc` creates the
+SQLite-backed object automatically. Use the displayed `workers.dev` URL with
+`wss://` and `/lobbies`, for example `wss://fwum-relay.example.workers.dev/lobbies`.
+
+The free deployment allows eight lobbies and 64 connected players/browsers.
+It refuses new rooms/joins after one million incoming messages in a UTC day to
+reserve some quota for running games. Running games can still exhaust the
+remaining provider quota; this is a capacity cushion, not an uptime guarantee.
+`/health` reports the current message count and limit.
+
+Brief disconnections trigger automatic reconnection for up to 25 seconds.
+Players retain their seats, and the host sends fresh state when they return.
+The relay saves its signing key and private lobby metadata across hibernation.
+PIN attempt limits also survive hibernation; PINs are stored as keyed hashes
+and never included in public listings. Resume tokens stay in game memory.
+
+Only the host sends world state, and it stops doing so when alone. Guests send
+control changes promptly and refresh unchanged controls every 150 ms. This
+reduces idle traffic while preserving the host's stuck-input timeout.
+
+Once deployed, set the repository's Actions variable **FWUM_RELAY_URL** to the
+public endpoint and rebuild the patchers. Both patchers bundle the same native
+extension artifact and server address. Players then use the in-game menu
+without configuring a server. Development builds can instead pass
+`--relay-url`; existing builds store the address in `FWUM-online.ini` beside
+the game executable.
+
+## Local or self-hosted relay
+
+The same lobby rules also run as a small Node 22 service. It holds lobbies and the latest visible
 world state in memory. It never downloads, saves or redistributes game assets.
 Four-digit codes are checked on the server and are excluded from room listings.
 
@@ -56,11 +108,10 @@ keep a session running. The players need only outbound connections to this
 service; they do not open inbound game ports.
 
 Once deployed, set the repository's Actions variable **FWUM_RELAY_URL** to that
-public endpoint and build the patchers. Both patchers bundle the same native
-extension artifact and server address. Players then use the in-game menu
-without configuring a server. Development builds can instead pass
-`--relay-url` to the patcher; existing builds store the address in
-`FWUM-online.ini` beside the game executable.
+public endpoint as described above. For reconnection across Node service
+restarts, configure a stable private **RELAY_SECRET** environment variable.
+Without it, restarts invalidate resume tokens; reconnecting to the same
+running process still works. Do not commit the secret.
 
 ## Build the extension and game
 
@@ -88,7 +139,8 @@ and the extension, so different zlib implementations don't split compatible lobb
 
 Automated checks cover open and locked rooms, exact PIN length/leading zeros,
 PIN attempt limits, capacity, build compatibility, host-only state/audio,
-assigned input slots, late joins, disconnect cleanup and malformed packets.
+assigned input slots, late joins, disconnect cleanup, authenticated resumption,
+relay restarts, hibernation, free-capacity limits and malformed packets.
 The existing patcher self-test verifies modified game chunks and their checksum.
 
 ```sh
@@ -107,6 +159,13 @@ Before releasing, verify in two real game instances:
 - [ ] Join an already running session and disconnect a controller/guest without stuck movement.
 - [ ] Leave as guest and as host, then reconnect successfully.
 - [ ] Complete the above across Windows and Steam Deck over the public WSS endpoint.
+
+Lab checks have verified a real Proton host and guest joining a `0042` lobby
+through the local Cloudflare runtime, independent remote walker movement, and
+both games automatically resuming their original seats after that relay was
+restarted. Text/counter values are checked through the actual Fusion engine.
+Full visual equivalence and battles remain unverified; the stock game also
+renders black in the current Wine virtual-desktop lab.
 
 For private lab diagnostics, add `diagnostics=C:\path\to\fwum.log` under
 `[online]` in `FWUM-online.ini`. It logs frame transitions and snapshot counts;

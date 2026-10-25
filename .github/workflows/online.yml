@@ -18,6 +18,11 @@ jobs:
         working-directory: online/server
       - run: npm test
         working-directory: online/server
+      - name: Check the free Cloudflare deployment bundle
+        run: npx wrangler deploy --dry-run --outdir ../../build/worker
+        working-directory: online/server
+        env:
+          WRANGLER_SEND_METRICS: "false"
       - name: Validate native state packets
         run: |
           g++ -std=c++17 -O2 online/native/snapshot_test.cpp -o /tmp/fwum-snapshot-test

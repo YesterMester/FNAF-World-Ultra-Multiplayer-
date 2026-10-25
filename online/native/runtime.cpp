@@ -24,22 +24,27 @@ struct Context {
     Data* data = nullptr;
     std::shared_ptr<fwum::Connection> connection;
     HWND window = nullptr, badge = nullptr, game = nullptr, status = nullptr, list = nullptr;
-    std::wstring ini, endpoint, build;
+    std::wstring ini, endpoint, build, player_name;
     std::wstring message = L"Choose Host or select a lobby to join.";
     Json rooms = Json::array(), members = Json::array();
+    Json seat = Json::object(), host_options = Json::object();
     bool connected = false, hosting = false, joined = false, playing = false, exit_session = false;
     bool exit_queued = false;
     bool connection_failed = false;
+    bool reconnecting = false, leaving = false, resume_pending = false, force_state = false;
     bool key_down = false;
     int slot = 0, players = 1, frame = -1;
     std::array<Pad, 4> pads{};
-    ULONGLONG input_at = 0, state_at = 0;
+    ULONGLONG input_at = 0, state_at = 0, retry_at = 0, reconnect_until = 0, resume_at = 0;
+    Pad sent_pad;
     uint32_t sequence = 0;
     uint32_t applied_sequence = uint32_t(-1);
     std::unique_ptr<fwum::Snapshot> snapshot;
     LPHO target = nullptr, created = nullptr;
     const fwum::Entity* entity = nullptr;
     int creating = -1;
+    double counter_value = 0;
+    bool counter_read = false;
     std::map<uint32_t, uint32_t> mapping;
     std::deque<Json> audio;
     int audio_pending = -1;
@@ -49,6 +54,7 @@ Context& ctx() { static auto* c = new Context(); return *c; }
 HINSTANCE instance = nullptr;
 WNDPROC badge_proc_original = nullptr;
 void menu();
+void connect(bool automatic = false);
 LRESULT CALLBACK badge_proc(HWND h, UINT m, WPARAM w, LPARAM l) {
     if (m == BM_CLICK) { menu(); return 0; }
     auto result = CallWindowProcW(badge_proc_original, h, m, w, l);
@@ -109,12 +115,26 @@ bool select_target() {
     return true;
 }
 void generate(unsigned event) { callRunTimeFunction(ctx().data, RFUNCTION_GENERATEEVENT, event, 0); }
+double counter_value(LPHO target, const fwum::Entity& e) {
+    auto& c = ctx(); const auto previous_target = c.target; const auto previous_entity = c.entity;
+    c.target = target; c.entity = &e; c.counter_read = false;
+    // The counter's cached display fields can differ from its numeric value.
+    // Read through Fusion's own expression, including negative integers.
+    generate(26);
+    const auto value = c.counter_value; const bool read = c.counter_read;
+    c.target = previous_target; c.entity = previous_entity;
+    if (!read) throw std::runtime_error("Couldn't read a game counter.");
+    return value;
+}
 void release_session() {
     auto& c = ctx();
     if (c.joined && !c.hosting) c.exit_session = true;
     c.joined = c.hosting = c.playing = false; c.players = 1; c.slot = 0;
     c.pads = {}; c.mapping.clear(); c.snapshot.reset();
     c.audio.clear(); c.audio_out = Json::array();
+    c.seat = Json::object(); c.host_options = Json::object();
+    c.reconnecting = c.leaving = c.resume_pending = false;
+    c.retry_at = c.reconnect_until = c.resume_at = 0;
 }
 Pad physical_pad() {
     Pad pad;
@@ -146,19 +166,42 @@ Pad physical_pad() {
 void refresh_ui();
 void network() {
     auto& c = ctx();
+    const auto now = GetTickCount64();
+    if (c.reconnecting && now >= c.reconnect_until) {
+        release_session();
+        if (c.connection) c.connection->stop();
+        c.connected = false; c.message = L"Couldn't restore the connection. Please join again.";
+        if (c.window) ShowWindow(c.window, SW_SHOW);
+        refresh_ui();
+    }
+    if (c.reconnecting && !c.connection && now >= c.retry_at) connect(true);
     if (!c.connection) return;
-    for (const auto& m : c.connection->messages()) {
+    const auto pending = c.connection->messages();
+    for (const auto& m : pending) {
         const auto type = m.value("type", "");
-        if (type == "welcome") { c.connected = true; c.connection_failed = false; c.message = L"Connected. Host a game or choose a lobby."; }
+        if (type == "welcome") {
+            c.connected = true; c.connection_failed = false;
+            c.message = c.reconnecting ? L"Restoring the co-op session..." : L"Connected. Host a game or choose a lobby.";
+            if (c.reconnecting) c.resume_at = now;
+        }
         else if (type == "rooms") c.rooms = m.at("rooms");
-        else if (type == "hosted" || type == "joined") {
-            c.joined = true; c.hosting = type == "hosted"; c.slot = m.at("slot");
+        else if (type == "hosted" || type == "joined" || type == "resumed") {
+            c.joined = true;
+            if (type != "resumed") c.hosting = type == "hosted";
+            c.slot = m.at("slot");
+            c.seat = {{"room", m.at("room").at("id")}, {"member", m.at("member")}, {"token", m.at("token")}};
+            if (c.hosting) c.seat["host"] = c.host_options;
+            c.reconnecting = c.leaving = c.resume_pending = false;
+            c.retry_at = c.reconnect_until = c.resume_at = 0;
+            c.state_at = c.input_at = 0; c.sent_pad = {}; c.force_state = true;
             c.message = c.hosting ? L"Lobby is visible. Press Start co-op when ready." : L"Joined! Waiting for the host to start.";
+            if (c.playing) c.message = L"Connection restored. Co-op is running.";
             log(type + " slot=" + std::to_string(c.slot));
         } else if (type == "members") {
             c.members = m.at("members"); c.players = int(c.members.size()); c.slot = m.at("slot"); c.pads = {};
         } else if (type == "started") {
             c.playing = true; c.message = L"Co-op is running. F10 opens this menu.";
+            if (c.hosting) { c.host_options["playing"] = true; c.seat["host"] = c.host_options; }
             if (c.window) ShowWindow(c.window, SW_HIDE);
             log("started");
         } else if (type == "input" && c.hosting) {
@@ -166,30 +209,52 @@ void network() {
             if (slot > 0 && slot < 4) c.pads[slot] = {m.at("buttons").get<uint16_t>(), m.at("lx").get<int16_t>(),
                 m.at("ly").get<int16_t>(), GetTickCount64()};
         } else if (type == "audio") { if (c.audio.size() < 128) c.audio.push_back(m); }
+        else if (type == "need-state") c.force_state = true;
+        else if (type == "notice") c.message = fwum::widen(m.value("message", ""));
         else if (type == "reset-inputs") c.pads = {};
         else if (type == "error" || type == "connection-error") {
             c.message = fwum::widen(m.value("message", "Couldn't connect."));
             if (type == "connection-error") c.connection_failed = true;
+            else if (c.reconnecting) {
+                if (m.value("code", "") == "resume_wait") { c.resume_pending = false; c.resume_at = now + 750; }
+                else { release_session(); if (c.window) ShowWindow(c.window, SW_SHOW); }
+            }
         }
-        else if (type == "closed" || type == "left" || type == "disconnected") {
+        else if (type == "disconnected") {
+            c.connected = false; c.connection.reset(); c.pads = {}; c.audio_out = Json::array();
+            if (c.joined && !c.leaving && !c.seat.empty()) {
+                if (!c.reconnecting) c.reconnect_until = now + 25000;
+                c.reconnecting = true; c.resume_pending = false; c.retry_at = now + 1000;
+                c.message = L"Connection lost. Reconnecting automatically..."; log("reconnecting");
+            } else {
+                release_session();
+                if (!c.connection_failed) c.message = L"Disconnected. Press Connect to try again.";
+                if (c.window) ShowWindow(c.window, SW_SHOW);
+            }
+        }
+        else if (type == "closed" || type == "left") {
             release_session();
-            if (type == "disconnected") c.connected = false;
             if (!c.connection_failed) c.message = type == "closed" ? L"The host ended the session." : L"Session ended.";
             if (c.window) ShowWindow(c.window, SW_SHOW);
         }
         refresh_ui();
     }
+    if (c.reconnecting && c.connected && !c.resume_pending && now >= c.resume_at) {
+        Json request = c.seat; request["type"] = "resume";
+        c.connection->send(request); c.resume_pending = true;
+    }
     if (!c.playing) return;
-    const auto now = GetTickCount64();
     if (c.hosting) {
         c.pads[0] = physical_pad();
         for (int i = 1; i < 4; ++i) if (now - c.pads[i].seen > 350) c.pads[i] = {};
     } else {
-        if (now - c.input_at >= 33) {
-            auto pad = physical_pad(); c.input_at = now;
+        const auto pad = physical_pad();
+        const bool changed = pad.buttons != c.sent_pad.buttons || pad.lx != c.sent_pad.lx || pad.ly != c.sent_pad.ly;
+        if (c.connected && !c.reconnecting && now - c.input_at >= 33 && (changed || now - c.input_at >= 150)) {
+            c.input_at = now; c.sent_pad = pad;
             c.connection->send({{"type", "input"}, {"buttons", pad.buttons}, {"lx", pad.lx}, {"ly", pad.ly}});
         }
-        auto packet = c.connection->world();
+        auto packet = c.connection ? c.connection->world() : std::vector<uint8_t>();
         if (!packet.empty()) {
             try {
                 auto snapshot = std::make_unique<fwum::Snapshot>(fwum::decode(packet));
@@ -228,7 +293,7 @@ fwum::Snapshot capture() {
         e.scale_x = rc->rcScaleX; e.scale_y = rc->rcScaleY; e.angle = rc->rcAngle;
         // Extended shader parameters can be pointers. Only transfer ordinary ink coefficients.
         e.effect = sp->rsEffect & 0x10ff; e.effect_param = uint32_t(sp->rsEffectParam);
-        if ((e.effect & 0xff) > 15) { e.effect = 0; e.effect_param = 0; }
+        if ((sp->rsEffect & ~0x10ffu) || (e.effect & 0xff) > 15) { e.effect = 0; e.effect_param = 0; }
         if (ho->hoType == 3) {
             auto text = system_fields(ho);
             e.colour = text->rsTextColor;
@@ -240,7 +305,7 @@ fwum::Snapshot capture() {
         } else if (ho->hoType == 7) {
             auto counter = system_fields(ho);
             e.floating = counter->rsValue.m_type == TYPE_DOUBLE;
-            e.value = e.floating ? counter->rsValue.m_double : counter->rsValue.m_long;
+            e.value = counter_value(ho, e);
             e.minimum = e.floating ? counter->rsMiniDouble : counter->rsMini;
             e.maximum = e.floating ? counter->rsMaxiDouble : counter->rsMaxi;
             e.colour = counter->rsColor1; e.colour2 = counter->rsColor2;
@@ -312,8 +377,13 @@ void apply() {
             counter->rsMiniDouble = e.minimum; counter->rsMaxiDouble = e.maximum;
             counter->rsColor1 = e.colour; counter->rsColor2 = e.colour2;
             generate(24);
-            const double value = counter->rsValue.m_type == TYPE_DOUBLE ? counter->rsValue.m_double : counter->rsValue.m_long;
-            if (std::abs(value - e.value) > std::max(0.00001, std::abs(e.value) * 0.000001)) ++counter_mismatch;
+            const double value = counter_value(target, e);
+            if (std::abs(value - e.value) > std::max(0.00001, std::abs(e.value) * 0.000001)) {
+                ++counter_mismatch;
+                if (c.snapshot->sequence % 60 == 0) log("counter oi=" + std::to_string(e.oi) +
+                    " expected=" + std::to_string(e.value) + " actual=" + std::to_string(value) +
+                    " min=" + std::to_string(e.minimum) + " max=" + std::to_string(e.maximum));
+            }
         }
         generate(show_pending); redraw(target);
     }
@@ -362,20 +432,23 @@ void refresh_ui() {
     }
     EnableWindow(GetDlgItem(c.window, 104), c.connected && !c.joined);
     EnableWindow(GetDlgItem(c.window, 105), c.connected && !c.joined);
-    EnableWindow(GetDlgItem(c.window, 106), c.hosting && !c.playing);
+    EnableWindow(GetDlgItem(c.window, 106), c.connected && !c.reconnecting && c.hosting && !c.playing);
     EnableWindow(GetDlgItem(c.window, 107), c.joined);
     EnableWindow(GetDlgItem(c.window, 100), !c.joined);
-    if (c.badge) SetWindowTextW(c.badge, c.joined ? (L"Co-op " + std::to_wstring(c.players) + L"/4 [F10]").c_str() : L"Online co-op [F10]");
+    if (c.badge) SetWindowTextW(c.badge, c.reconnecting ? L"Reconnecting [F10]" :
+        c.joined ? (L"Co-op " + std::to_wstring(c.players) + L"/4 [F10]").c_str() : L"Online co-op [F10]");
 }
-void connect() {
+void connect(bool automatic) {
     auto& c = ctx();
     if (c.endpoint.empty()) { c.message = L"The online service hasn't been configured for this build yet."; refresh_ui(); return; }
     if (c.connection) c.connection->stop();
-    c.connected = false; c.message = L"Connecting..."; refresh_ui();
-    auto name = fwum::narrow(field(101));
-    WritePrivateProfileStringW(L"online", L"name", field(101).c_str(), c.ini.c_str());
-    c.connection = fwum::Connection::open(c.endpoint, {{"type", "hello"}, {"protocol", 1},
-        {"build", fwum::narrow(c.build)}, {"name", name}});
+    c.connected = false; c.message = automatic ? L"Reconnecting automatically..." : L"Connecting..."; refresh_ui();
+    if (!automatic) {
+        c.player_name = field(101);
+        WritePrivateProfileStringW(L"online", L"name", c.player_name.c_str(), c.ini.c_str());
+    }
+    c.connection = fwum::Connection::open(c.endpoint, {{"type", "hello"}, {"protocol", 2},
+        {"build", fwum::narrow(c.build)}, {"name", fwum::narrow(c.player_name)}});
 }
 LRESULT CALLBACK menu_proc(HWND window, UINT message, WPARAM w, LPARAM l) {
     auto& c = ctx();
@@ -383,14 +456,21 @@ LRESULT CALLBACK menu_proc(HWND window, UINT message, WPARAM w, LPARAM l) {
     if (message == WM_COMMAND) {
         const int id = LOWORD(w);
         if (id == 100) connect();
-        if (id == 104) send({{"type", "host"}, {"name", fwum::narrow(field(102))}, {"pin", fwum::narrow(field(103))}});
+        if (id == 104) {
+            c.host_options = {{"name", fwum::narrow(field(102))}, {"pin", fwum::narrow(field(103))}, {"playing", false}};
+            Json request = c.host_options; request["type"] = "host"; send(request);
+        }
         if (id == 105 || (id == 110 && HIWORD(w) == LBN_DBLCLK)) {
             auto selected = SendMessageW(c.list, LB_GETCURSEL, 0, 0);
             if (!c.joined && selected >= 0 && size_t(selected) < c.rooms.size()) send({{"type", "join"},
                 {"id", c.rooms[size_t(selected)].at("id")}, {"pin", fwum::narrow(field(103))}});
         }
         if (id == 106) send({{"type", "start"}});
-        if (id == 107) send({{"type", "leave"}});
+        if (id == 107) {
+            c.leaving = true;
+            if (c.connected && !c.reconnecting) send({{"type", "leave"}});
+            else { release_session(); if (c.connection) c.connection->stop(); refresh_ui(); }
+        }
         if (id == 108) { ShowWindow(window, SW_HIDE); SetForegroundWindow(c.game); }
         if (id == 109) send({{"type", "browse"}});
         return 0;
@@ -453,7 +533,7 @@ template<int N> BOOL WINAPI condition(LPHO ho, long p1, long p2) {
         return !(c.joined && !c.hosting) && !c.exit_session;
     }
     if constexpr (N == needs_frame) return c.playing && !c.hosting && c.snapshot && c.snapshot->frame != c.frame;
-    if constexpr (N == create_pending || N == text_pending || N == show_pending || N == 23 || N == 24) return TRUE;
+    if constexpr (N == create_pending || N == text_pending || N == show_pending || N == 23 || N == 24 || N == 26) return TRUE;
     if constexpr (N == 21) return c.exit_session && !c.exit_queued;
     if constexpr (N == 22) return c.playing;
     if constexpr (N == 25) return select_target();
@@ -527,10 +607,12 @@ short WINAPI finish(LPHO, long, long) {
     auto& c = ctx();
     if (!c.playing) return 0;
     try {
-        if (c.hosting && !c.audio_out.empty()) {
+        if (c.hosting && c.connected && !c.reconnecting && c.players > 1 && !c.audio_out.empty()) {
             send({{"type", "audio"}, {"frame", c.frame}, {"ids", c.audio_out}}); c.audio_out = Json::array();
         }
-        if (c.hosting && GetTickCount64() - c.state_at >= 50) {
+        if (c.hosting && (!c.connected || c.reconnecting || c.players <= 1)) c.audio_out = Json::array();
+        if (c.hosting && c.connected && !c.reconnecting && c.players > 1 && (c.force_state || GetTickCount64() - c.state_at >= 50)) {
+            c.force_state = false;
             c.state_at = GetTickCount64(); auto state = capture();
             if (state.sequence % 60 == 0) log("captured " + std::to_string(state.entities.size()) + " objects");
             c.connection->send_world(fwum::encode(state));
@@ -549,10 +631,19 @@ short WINAPI report_audio(LPHO, long id, long) {
     if (c.playing && c.hosting && c.audio_out.size() < 128) c.audio_out.push_back(id);
     return 0;
 }
+short WINAPI report_counter(LPHO ho, long value, long) {
+    auto& c = ctx();
+    c.counter_read = true;
+    if (c.entity && c.entity->floating) {
+        const long bits = CNC_GetFloatValue(reinterpret_cast<Data*>(ho), 0);
+        float result; std::memcpy(&result, &bits, sizeof result); c.counter_value = result;
+    } else c.counter_value = value;
+    return 0;
+}
 CondFn conditions[] = {condition<0>, condition<1>, condition<2>, condition<3>, condition<4>, condition<5>, condition<6>,
     condition<7>, condition<8>, condition<9>, condition<10>, condition<11>, condition<12>, condition<13>, condition<14>,
-    condition<15>, condition<16>, condition<17>, condition<18>, condition<19>, condition<20>, condition<21>, condition<22>, condition<23>, condition<24>, condition<25>};
-ActFn actions[] = {begin, finish, created, clear_exit, report_audio};
+    condition<15>, condition<16>, condition<17>, condition<18>, condition<19>, condition<20>, condition<21>, condition<22>, condition<23>, condition<24>, condition<25>, condition<26>};
+ActFn actions[] = {begin, finish, created, clear_exit, report_audio, report_counter};
 ExpFn expressions[] = {expression<0>, expression<1>, expression<2>, expression<3>, expression<4>, expression<5>, expression<6>, expression<7>, expression<8>, expression<9>};
 }
 extern "C" {
@@ -622,7 +713,7 @@ short WINAPI ContinueRunObject(Data*) { return 0; }
 short WINAPI GetRunObjectInfos(mv*, fpKpxRunInfos info) {
     memset(info, 0, sizeof(*info)); info->conditions = reinterpret_cast<EXTCONDROUTINE*>(conditions);
     info->actions = reinterpret_cast<EXTACTROUTINE*>(actions); info->expressions = reinterpret_cast<EXTEXPROUTINE*>(expressions);
-    info->numOfConditions = 26; info->numOfActions = 5; info->numOfExpressions = 10;
+    info->numOfConditions = 27; info->numOfActions = 6; info->numOfExpressions = 10;
     info->editFlags = OEFLAG_NEVERSLEEP | OEFLAG_NEVERKILL; info->identifier = 0x4e4d5746; return TRUE;
 }
 }

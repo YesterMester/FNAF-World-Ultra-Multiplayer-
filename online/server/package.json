@@ -3,7 +3,17 @@
   "version": "1.1.0",
   "private": true,
   "type": "module",
-  "engines": { "node": ">=22" },
-  "scripts": { "start": "node server.mjs", "test": "node --test" },
-  "dependencies": { "ws": "8.22.0" }
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node server.mjs",
+    "test": "node --test server.test.mjs worker.test.mjs"
+  },
+  "dependencies": {
+    "ws": "8.22.0"
+  },
+  "devDependencies": {
+    "wrangler": "4.149.0"
+  }
 }

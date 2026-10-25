@@ -7,3 +7,6 @@ fwum-downloads/
 FNaF World Ultra Multiplayer/
 
 node_modules/
+.wrangler/
+online/server/.dev.vars*
+online/server/.env*

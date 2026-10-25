@@ -91,7 +91,7 @@ def test_game(path):
                       for a in first.actions), "online tick precedes game events in %r" % f.name)
             callbacks = [c for g in f.events.groups for c in g.conditions
                          if c.object_info == online.index and c.object_type == online.type
-                         and (-81 - c.num) in (18, 19, 20, 23, 24)]
+                         and (-81 - c.num) in (18, 19, 20, 23, 24, 26)]
             check(all(not c.flags & 32 for c in callbacks),
                   "native callbacks registered as triggered events in %r" % f.name)
             lines = [g.line for g in f.events.groups if g.conditions and
