@@ -75,6 +75,12 @@ class Connection : public std::enable_shared_from_this<Connection> {
             if (path.empty() || path == L"/") path = L"/lobbies";
             session = WinHttpOpen(L"FWUM/1.1", WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY, nullptr, nullptr, 0);
             if (!session) throw std::runtime_error("Couldn't open the online connection.");
+            // Older WinHTTP/Wine defaults can still select obsolete TLS versions.
+            DWORD protocols = WINHTTP_FLAG_SECURE_PROTOCOL_TLS1_2 | 0x00002000; // TLS 1.3
+            if (!WinHttpSetOption(session, WINHTTP_OPTION_SECURE_PROTOCOLS, &protocols, sizeof protocols)) {
+                protocols = WINHTTP_FLAG_SECURE_PROTOCOL_TLS1_2;
+                WinHttpSetOption(session, WINHTTP_OPTION_SECURE_PROTOCOLS, &protocols, sizeof protocols);
+            }
             WinHttpSetTimeouts(session, 5000, 5000, 5000, 5000);
             connect = WinHttpConnect(session, host.c_str(), u.nPort, 0);
             request = WinHttpOpenRequest(connect, L"GET", path.c_str(), nullptr, nullptr, nullptr,
