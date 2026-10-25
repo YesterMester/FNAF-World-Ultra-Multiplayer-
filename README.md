@@ -5,6 +5,12 @@ new areas and attacks, played with controllers and with up to **4 players sharin
 Works on **Windows** and **Steam Deck**, and you can play **online with a friend for free**
 using peer-to-peer remote play (see [Playing online](#playing-online-free-peer-to-peer)).
 
+**Native online co-op development:** this branch adds an in-game lobby browser,
+hosting, and optional four-digit access codes, with everyone running their own
+copy of the game. See [native online setup and validation](online/README.md).
+The public relay and full gameplay validation are required before this replaces
+the stable online instructions below.
+
 This repository holds a **patcher**, not the games. The patcher downloads both mods from
 their official Game Jolt pages (or uses copies you already have) and builds the merged game
 on your computer.

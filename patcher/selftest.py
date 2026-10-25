@@ -83,6 +83,21 @@ def test_game(path):
     frames = parse_frames(g)
     check(g.name == "FNaF World Ultra", "merged game name")
     check(any(o.name == "MP Gamepad" for o in objs), "gamepad object present")
+    online = next((o for o in objs if o.name == "MP Online"), None)
+    if online is not None:
+        for f in frames:
+            first = f.events.groups[0]
+            check(any(a.object_type == online.type and a.object_info == online.index and a.num == 80
+                      for a in first.actions), "online tick precedes game events in %r" % f.name)
+            callbacks = [c for g in f.events.groups for c in g.conditions
+                         if c.object_info == online.index and c.object_type == online.type
+                         and (-81 - c.num) in (18, 19, 20, 23, 24)]
+            check(all(not c.flags & 32 for c in callbacks),
+                  "native callbacks registered as triggered events in %r" % f.name)
+            lines = [g.line for g in f.events.groups if g.conditions and
+                     g.conditions[0].object_info == online.index and g.conditions[0].object_type == online.type]
+            check(all(n > 0 for n in lines) and len(lines) == len(set(lines)),
+                  "online callbacks have distinct event identifiers in %r" % f.name)
     pc = g.chunk(0x2242)
     tc = g.chunk(0x222F)
     stored = struct.unpack("<I", pc.decode(g))[0]

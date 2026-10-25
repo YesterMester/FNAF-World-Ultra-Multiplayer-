@@ -1,14 +1,16 @@
 """One call that turns FNaF World Ultra + the Local Multiplayer exe into the merged game."""
 import os
+import shutil
 
 from .evb import t_gv
 from .merge import OVERWORLD, Merger, MergeError
+from .online import add_online, compatibility_id, find_extension, write_settings
 
-VERSION = "1.0.0"
+VERSION = "1.1.0"
 
 
 def build(ultra_dir, mp_exe, out_dir, log=print, debug=False, test_jump=False, baseline=False,
-          companions=True):
+          companions=True, online_extension=None, relay_url=None):
     if os.path.abspath(out_dir) == os.path.abspath(ultra_dir):
         raise MergeError("choose an output folder different from the FNaF World Ultra folder")
     log("reading FNaF World Ultra from %s" % ultra_dir)
@@ -30,8 +32,18 @@ def build(ultra_dir, mp_exe, out_dir, log=print, debug=False, test_jump=False, b
         m.debug_dump()
     if test_jump:
         m.test_jump()
+    online_extension = online_extension or find_extension()
+    if online_extension and not baseline:
+        add_online(m, online_extension)
+        online_build_id = compatibility_id(m, online_extension)
     log("writing %s" % out_dir)
     m.write(out_dir)
+    if online_extension and not baseline:
+        shutil.copy2(online_extension, os.path.join(out_dir, "Modules", "FWUMOnline.mfx"))
+        notice = os.path.join(os.path.dirname(online_extension), "FWUM-THIRD-PARTY-NOTICES.txt")
+        if os.path.isfile(notice):
+            shutil.copy2(notice, os.path.join(out_dir, "FWUM-THIRD-PARTY-NOTICES.txt"))
+        write_settings(out_dir, relay_url, online_build_id)
     with open(os.path.join(out_dir, "MULTIPLAYER-README.txt"), "w", encoding="utf-8") as fh:
         fh.write(PLAY_NOTES)
     log("done")
@@ -69,4 +81,13 @@ host plays with mouse and keyboard and a friend joins over the internet.
 Playing online: host with Parsec (Windows) or Sunshine + Moonlight (Steam Deck);
 the friend's controller shows up as an extra controller. Setup steps are on the
 project page.
+
+Native online preview (builds with the online extension): click Online co-op or
+press F10. Host game makes a visible lobby; leave Code empty for an open lobby,
+or use exactly four digits. Friends select the lobby, enter its code if needed,
+and choose Join selected. The host chooses Start co-op. Everyone runs their own
+copy, and the host controls the save and mouse menus. Keyboard guests use
+WASD/arrows, Z/Enter to confirm, R to flee, Tab for the map, and E to switch party.
+Native mode assigns one player per computer and handles keyboard P1 automatically.
+This preview needs a configured lobby service; see online/README.md in the project.
 """ % VERSION

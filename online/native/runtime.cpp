@@ -1,0 +1,628 @@
+#define WIN32
+#define COXSDK
+#define IN_EXT_VERSION2
+#define UNICODE
+#define _UNICODE
+#define NOMINMAX
+#define HWABETA
+#include "ccxhdr.h"
+#undef __segment
+#include <xinput.h>
+#include <array>
+#include <fstream>
+#include <map>
+#include <set>
+#include "transport.hpp"
+
+using fwum::Json;
+static_assert(sizeof(void*) == 4, "Build FWUMOnline with a 32-bit x86 compiler.");
+namespace {
+constexpr int authority = 16, needs_frame = 17, create_pending = 18, text_pending = 19, show_pending = 20;
+struct Data { headerObject rHo; int frame; };
+struct Pad { uint16_t buttons = 0; int16_t lx = 0, ly = 0; ULONGLONG seen = 0; };
+struct Context {
+    Data* data = nullptr;
+    std::shared_ptr<fwum::Connection> connection;
+    HWND window = nullptr, badge = nullptr, game = nullptr, status = nullptr, list = nullptr;
+    std::wstring ini, endpoint, build;
+    std::wstring message = L"Choose Host or select a lobby to join.";
+    Json rooms = Json::array(), members = Json::array();
+    bool connected = false, hosting = false, joined = false, playing = false, exit_session = false;
+    bool exit_queued = false;
+    bool connection_failed = false;
+    bool key_down = false;
+    int slot = 0, players = 1, frame = -1;
+    std::array<Pad, 4> pads{};
+    ULONGLONG input_at = 0, state_at = 0;
+    uint32_t sequence = 0;
+    uint32_t applied_sequence = uint32_t(-1);
+    std::unique_ptr<fwum::Snapshot> snapshot;
+    LPHO target = nullptr, created = nullptr;
+    const fwum::Entity* entity = nullptr;
+    int creating = -1;
+    std::map<uint32_t, uint32_t> mapping;
+    std::deque<Json> audio;
+    int audio_pending = -1;
+    Json audio_out = Json::array();
+};
+Context& ctx() { static auto* c = new Context(); return *c; }
+HINSTANCE instance = nullptr;
+WNDPROC badge_proc_original = nullptr;
+void menu();
+LRESULT CALLBACK badge_proc(HWND h, UINT m, WPARAM w, LPARAM l) {
+    if (m == BM_CLICK) { menu(); return 0; }
+    auto result = CallWindowProcW(badge_proc_original, h, m, w, l);
+    if (m == WM_LBUTTONUP) menu();
+    return result;
+}
+std::wstring setting(const wchar_t* key, const wchar_t* fallback) {
+    wchar_t buf[2048]; GetPrivateProfileStringW(L"online", key, fallback, buf, 2048, ctx().ini.c_str()); return buf;
+}
+void log(const std::string& message) {
+    wchar_t path[2048]{}; GetEnvironmentVariableW(L"FWUM_TEST_LOG", path, 2048);
+    if (!*path && !ctx().ini.empty()) GetPrivateProfileStringW(L"online", L"diagnostics", L"", path, 2048, ctx().ini.c_str());
+    if (!*path) return;
+    std::ofstream f(fwum::narrow(path), std::ios::app); f << message << '\n';
+}
+bool readable(const void* p, size_t length) {
+    MEMORY_BASIC_INFORMATION m{};
+    return p && VirtualQuery(p, &m, sizeof m) && m.State == MEM_COMMIT && !(m.Protect & (PAGE_NOACCESS | PAGE_GUARD)) &&
+        uintptr_t(p) + length <= uintptr_t(m.BaseAddress) + m.RegionSize;
+}
+LPRH header() { return ctx().data ? ctx().data->rHo.hoAdRunHeader : nullptr; }
+std::vector<LPHO> objects() {
+    std::vector<LPHO> result; auto rh = header();
+    if (!rh || rh->rhMaxObjects < 0 || rh->rhMaxObjects > 30000 ||
+        !readable(rh->rhObjectList, size_t(rh->rhMaxObjects) * sizeof(objectsList))) return result;
+    for (int i = 0; i < rh->rhMaxObjects; ++i) {
+        auto ho = rh->rhObjectList[i].oblOffset;
+        if (readable(ho, sizeof(headerObject)) && ho->hoNumber == i && !(ho->hoFlags & HOF_DESTROYED)) result.push_back(ho);
+    }
+    return result;
+}
+uint32_t fixed(LPHO ho) { return (uint32_t(ho->hoCreationId) << 16) | uint16_t(ho->hoNumber); }
+rCom* common(LPHO ho) { return reinterpret_cast<rCom*>(reinterpret_cast<char*>(ho) + sizeof(headerObject)); }
+rSpr* sprite(LPHO ho) {
+    if (ho->hoType == 2) return &reinterpret_cast<LPRO>(ho)->ros;
+    return &reinterpret_cast<LPRS>(ho)->rss;
+}
+LPRS system_fields(LPHO ho) {
+    // Fusion 2.5+ gives strings/counters alterable values. Its rVal is inserted
+    // after the sprite header, before the fields described by the older SDK's
+    // rs struct. Active objects already include rVal in their own SDK layout.
+    size_t extra = 0;
+    if ((ho->hoOEFlags & OEFLAG_VALUES) && ho->hoOffsetValue == offsetof(rs, rsPlayer)) extra = sizeof(rVal);
+    return reinterpret_cast<LPRS>(reinterpret_cast<char*>(ho) + extra);
+}
+bool renderable(LPHO ho) { return ho->hoType == 2 || ho->hoType == 3 || ho->hoType == 7; }
+void redraw(LPHO ho) {
+    common(ho)->rcChanged = TRUE;
+    if (ho->hoModifRoutine) ho->hoModifRoutine(ho);
+}
+void no_move(LPHO) {}
+bool select_target() {
+    auto& c = ctx();
+    if (!c.target || !c.entity) return false;
+    auto oi = c.target->hoOiList;
+    oi->oilEventCount = header()->rh2.rh2EventCount;
+    oi->oilListSelected = c.target->hoNumber; oi->oilNumOfSelected = 1; c.target->hoNextSelected = -1;
+    return true;
+}
+void generate(unsigned event) { callRunTimeFunction(ctx().data, RFUNCTION_GENERATEEVENT, event, 0); }
+void release_session() {
+    auto& c = ctx();
+    if (c.joined && !c.hosting) c.exit_session = true;
+    c.joined = c.hosting = c.playing = false; c.players = 1; c.slot = 0;
+    c.pads = {}; c.mapping.clear(); c.snapshot.reset();
+    c.audio.clear(); c.audio_out = Json::array();
+}
+Pad physical_pad() {
+    Pad pad;
+    auto fg = GetForegroundWindow(); auto& c = ctx();
+    if ((c.window && IsWindowVisible(c.window)) || (fg != c.game && !IsChild(c.game, fg))) return pad;
+    static auto get = [] {
+        for (auto dll : {L"xinput1_4.dll", L"xinput1_3.dll", L"xinput9_1_0.dll"}) {
+            auto module = LoadLibraryW(dll);
+            if (module) if (auto fn = GetProcAddress(module, "XInputGetState")) return reinterpret_cast<DWORD(WINAPI*)(DWORD, XINPUT_STATE*)>(fn);
+        }
+        return static_cast<DWORD(WINAPI*)(DWORD, XINPUT_STATE*)>(nullptr);
+    }();
+    XINPUT_STATE state{};
+    if (get && get(0, &state) == ERROR_SUCCESS) {
+        pad.buttons = state.Gamepad.wButtons; pad.lx = state.Gamepad.sThumbLX; pad.ly = state.Gamepad.sThumbLY;
+    }
+    auto key = [](int k) { return (GetAsyncKeyState(k) & 0x8000) != 0; };
+    if (key('W') || key(VK_UP)) pad.buttons |= XINPUT_GAMEPAD_DPAD_UP;
+    if (key('S') || key(VK_DOWN)) pad.buttons |= XINPUT_GAMEPAD_DPAD_DOWN;
+    if (key('A') || key(VK_LEFT)) pad.buttons |= XINPUT_GAMEPAD_DPAD_LEFT;
+    if (key('D') || key(VK_RIGHT)) pad.buttons |= XINPUT_GAMEPAD_DPAD_RIGHT;
+    if (key('Z') || key(VK_RETURN) || key(VK_SPACE)) pad.buttons |= XINPUT_GAMEPAD_A;
+    if (key('R')) pad.buttons |= XINPUT_GAMEPAD_B;
+    if (key('X') || key(VK_SHIFT)) pad.buttons |= XINPUT_GAMEPAD_X;
+    if (key(VK_TAB)) pad.buttons |= XINPUT_GAMEPAD_BACK;
+    if (key('E')) pad.buttons |= XINPUT_GAMEPAD_RIGHT_SHOULDER;
+    return pad;
+}
+void refresh_ui();
+void network() {
+    auto& c = ctx();
+    if (!c.connection) return;
+    for (const auto& m : c.connection->messages()) {
+        const auto type = m.value("type", "");
+        if (type == "welcome") { c.connected = true; c.connection_failed = false; c.message = L"Connected. Host a game or choose a lobby."; }
+        else if (type == "rooms") c.rooms = m.at("rooms");
+        else if (type == "hosted" || type == "joined") {
+            c.joined = true; c.hosting = type == "hosted"; c.slot = m.at("slot");
+            c.message = c.hosting ? L"Lobby is visible. Press Start co-op when ready." : L"Joined! Waiting for the host to start.";
+            log(type + " slot=" + std::to_string(c.slot));
+        } else if (type == "members") {
+            c.members = m.at("members"); c.players = int(c.members.size()); c.slot = m.at("slot"); c.pads = {};
+        } else if (type == "started") {
+            c.playing = true; c.message = L"Co-op is running. F10 opens this menu.";
+            if (c.window) ShowWindow(c.window, SW_HIDE);
+            log("started");
+        } else if (type == "input" && c.hosting) {
+            const int slot = m.at("slot");
+            if (slot > 0 && slot < 4) c.pads[slot] = {m.at("buttons").get<uint16_t>(), m.at("lx").get<int16_t>(),
+                m.at("ly").get<int16_t>(), GetTickCount64()};
+        } else if (type == "audio") { if (c.audio.size() < 128) c.audio.push_back(m); }
+        else if (type == "reset-inputs") c.pads = {};
+        else if (type == "error" || type == "connection-error") {
+            c.message = fwum::widen(m.value("message", "Couldn't connect."));
+            if (type == "connection-error") c.connection_failed = true;
+        }
+        else if (type == "closed" || type == "left" || type == "disconnected") {
+            release_session();
+            if (type == "disconnected") c.connected = false;
+            if (!c.connection_failed) c.message = type == "closed" ? L"The host ended the session." : L"Session ended.";
+            if (c.window) ShowWindow(c.window, SW_SHOW);
+        }
+        refresh_ui();
+    }
+    if (!c.playing) return;
+    const auto now = GetTickCount64();
+    if (c.hosting) {
+        c.pads[0] = physical_pad();
+        for (int i = 1; i < 4; ++i) if (now - c.pads[i].seen > 350) c.pads[i] = {};
+    } else {
+        if (now - c.input_at >= 33) {
+            auto pad = physical_pad(); c.input_at = now;
+            c.connection->send({{"type", "input"}, {"buttons", pad.buttons}, {"lx", pad.lx}, {"ly", pad.ly}});
+        }
+        auto packet = c.connection->world();
+        if (!packet.empty()) {
+            try {
+                auto snapshot = std::make_unique<fwum::Snapshot>(fwum::decode(packet));
+                if (snapshot->frame >= header()->rhApp->m_hdr.gaNbFrames) throw std::runtime_error("Invalid game area.");
+                c.snapshot = std::move(snapshot);
+            }
+            catch (const std::exception& e) { c.message = fwum::widen(e.what()); c.connection->stop(); release_session(); }
+        }
+    }
+}
+fwum::Snapshot capture() {
+    auto& c = ctx(); auto rh = header(); fwum::Snapshot state;
+    state.frame = c.frame; state.sequence = ++c.sequence;
+    state.camera_x = rh->rhWindowX; state.camera_y = rh->rhWindowY;
+    state.width = uint16_t(rh->rh3.rh3WindowSx); state.height = uint16_t(rh->rh3.rh3WindowSy);
+    auto frame = rh->rhFrame;
+    state.background = frame->m_hdr.leBackground;
+    if (frame->m_nLayers >= 0 && frame->m_nLayers <= 128 &&
+        readable(frame->m_pLayers, frame->m_nLayers * sizeof(RunFrameLayer))) {
+        for (int i = 0; i < frame->m_nLayers; ++i) {
+            const auto& l = frame->m_pLayers[i];
+            state.layers.push_back({l.x, l.y, l.dwOptions & 0x7ffffu});
+        }
+    }
+    for (auto ho : objects()) {
+        if (!renderable(ho) || !readable(ho, ho->hoType == 2 ? sizeof(RunObject) : sizeof(rs))) continue;
+        auto rc = common(ho); auto sp = sprite(ho);
+        if (sp->rsFlags & RSFLAG_HIDDEN) continue;
+        if (ho->hoX + ho->hoImgWidth < state.camera_x - 128 || ho->hoY + ho->hoImgHeight < state.camera_y - 128 ||
+            ho->hoX > state.camera_x + state.width + 128 || ho->hoY > state.camera_y + state.height + 128) continue;
+        fwum::Entity e;
+        e.id = fixed(ho); e.oi = ho->hoOi; e.type = ho->hoType; e.layer = ho->hoLayer;
+        e.z = sp->rsZOrder;
+        e.sprite_layer = rc->rcSprite ? GetSpriteLayer(rh->rhIdEditWin, rc->rcSprite) : ho->hoLayer * 2 + 1;
+        e.x = ho->hoX; e.y = ho->hoY; e.image = rc->rcImage; e.animation = rc->rcAnim; e.direction = uint8_t(rc->rcDir & 31);
+        e.scale_x = rc->rcScaleX; e.scale_y = rc->rcScaleY; e.angle = rc->rcAngle;
+        // Extended shader parameters can be pointers. Only transfer ordinary ink coefficients.
+        e.effect = sp->rsEffect & 0x10ff; e.effect_param = uint32_t(sp->rsEffectParam);
+        if ((e.effect & 0xff) > 15) { e.effect = 0; e.effect_param = 0; }
+        if (ho->hoType == 3) {
+            auto text = system_fields(ho);
+            e.colour = text->rsTextColor;
+            if (text->rsTextBuffer && readable(text->rsTextBuffer, size_t(std::max(0, std::min(text->rsLBuffer, 8192))))) {
+                size_t len = 0;
+                while (len < size_t(std::max(0, std::min(text->rsLBuffer / 2, 4096))) && text->rsTextBuffer[len]) ++len;
+                e.text.assign(reinterpret_cast<const char16_t*>(text->rsTextBuffer), len);
+            }
+        } else if (ho->hoType == 7) {
+            auto counter = system_fields(ho);
+            e.floating = counter->rsValue.m_type == TYPE_DOUBLE;
+            e.value = e.floating ? counter->rsValue.m_double : counter->rsValue.m_long;
+            e.minimum = e.floating ? counter->rsMiniDouble : counter->rsMini;
+            e.maximum = e.floating ? counter->rsMaxiDouble : counter->rsMaxi;
+            e.colour = counter->rsColor1; e.colour2 = counter->rsColor2;
+        }
+        state.entities.push_back(std::move(e));
+    }
+    return state;
+}
+void apply() {
+    auto& c = ctx();
+    if (!c.snapshot || c.snapshot->frame != c.frame) return;
+    if (c.applied_sequence == c.snapshot->sequence) return;
+    c.applied_sequence = c.snapshot->sequence;
+    auto frame = header()->rhFrame;
+    if (frame->m_hdr.leBackground != c.snapshot->background) {
+        frame->m_hdr.leBackground = c.snapshot->background;
+        header()->rh3.rh3Scrolling |= RH3SCROLLING_REDRAWALL;
+    }
+    if (c.snapshot->layers.size() == size_t(frame->m_nLayers)) {
+        for (int i = 0; i < frame->m_nLayers; ++i) {
+            auto& l = frame->m_pLayers[i]; const auto& remote = c.snapshot->layers[i];
+            l.dx = remote.x - l.x; l.dy = remote.y - l.y;
+            if ((l.dwOptions ^ remote.flags) & FLOPT_VISIBLE) l.dwOptions |= (remote.flags & FLOPT_VISIBLE) ? FLOPT_TOSHOW : FLOPT_TOHIDE;
+        }
+    }
+    auto all = objects(); std::set<uint32_t> used, reserved;
+    int missing = 0, made = 0, text_mismatch = 0, counter_mismatch = 0;
+    std::vector<std::pair<int32_t, LPHO>> order;
+    for (const auto& e : c.snapshot->entities) {
+        if (e.layer >= frame->m_nLayers || e.sprite_layer >= frame->m_nLayers * 2 + 2) continue;
+        auto mapped = c.mapping.find(e.id);
+        if (mapped != c.mapping.end()) reserved.insert(mapped->second);
+    }
+    for (const auto& e : c.snapshot->entities) {
+        if (e.layer >= frame->m_nLayers || e.sprite_layer >= frame->m_nLayers * 2 + 2) { ++missing; continue; }
+        LPHO target = nullptr;
+        auto found = c.mapping.find(e.id);
+        if (found != c.mapping.end()) for (auto ho : all) if (fixed(ho) == found->second && ho->hoOi == e.oi) { target = ho; break; }
+        if (!target) for (auto ho : all) if (ho->hoOi == e.oi && ho->hoType == e.type &&
+            !used.count(fixed(ho)) && !reserved.count(fixed(ho))) { target = ho; break; }
+        if (!target) {
+            c.creating = e.oi; c.created = nullptr; generate(create_pending); c.creating = -1;
+            target = c.created; if (target) { all.push_back(target); ++made; }
+        }
+        if (!target || !renderable(target) || target->hoType != e.type) { ++missing; continue; }
+        used.insert(fixed(target)); c.mapping[e.id] = fixed(target);
+        order.emplace_back(e.z, target);
+        c.target = target; c.entity = &e;
+        auto rc = common(target); auto sp = sprite(target);
+        target->hoX = e.x; target->hoY = e.y; target->hoCalculX = target->hoCalculY = 0;
+        target->hoLayer = e.layer;
+        if (rc->rcSprite) SetSpriteLayer(header()->rhIdEditWin, rc->rcSprite, e.sprite_layer);
+        rc->rcRoutineMove = no_move; rc->rcRoutineAnimation = no_move;
+        rc->rcImage = e.image; rc->rcAnim = e.animation; rc->rcDir = e.direction;
+        rc->rcScaleX = e.scale_x; rc->rcScaleY = e.scale_y; rc->rcAngle = e.angle;
+        // Preserve any locally-owned shader resources and only apply ordinary effects.
+        if ((sp->rsEffect & ~0x10ffu) == 0) { sp->rsEffect = e.effect; sp->rsEffectParam = e.effect_param; }
+        if (target->hoType == 3) {
+            system_fields(target)->rsTextColor = e.colour;
+            generate(text_pending);
+            const auto text = system_fields(target);
+            if (!readable(text->rsTextBuffer, (e.text.size() + 1) * sizeof(wchar_t)) ||
+                std::char_traits<char16_t>::compare(reinterpret_cast<const char16_t*>(text->rsTextBuffer), e.text.c_str(), e.text.size() + 1)) ++text_mismatch;
+        }
+        else if (target->hoType == 7) {
+            auto counter = system_fields(target);
+            counter->rsMini = long(std::clamp(e.minimum, double(INT32_MIN), double(INT32_MAX)));
+            counter->rsMaxi = long(std::clamp(e.maximum, double(INT32_MIN), double(INT32_MAX)));
+            counter->rsMiniDouble = e.minimum; counter->rsMaxiDouble = e.maximum;
+            counter->rsColor1 = e.colour; counter->rsColor2 = e.colour2;
+            generate(24);
+            const double value = counter->rsValue.m_type == TYPE_DOUBLE ? counter->rsValue.m_double : counter->rsValue.m_long;
+            if (std::abs(value - e.value) > std::max(0.00001, std::abs(e.value) * 0.000001)) ++counter_mismatch;
+        }
+        generate(show_pending); redraw(target);
+    }
+    for (auto ho : all) if (renderable(ho) && !used.count(fixed(ho))) {
+        ho->hoX = ho->hoY = -900000;
+        common(ho)->rcRoutineMove = no_move; common(ho)->rcRoutineAnimation = no_move;
+        redraw(ho);
+    }
+    c.target = nullptr; c.entity = nullptr;
+    std::stable_sort(order.begin(), order.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
+    for (auto [z, ho] : order) if (common(ho)->rcSprite) MoveSpriteToFront(header()->rhIdEditWin, common(ho)->rcSprite);
+    std::set<uint32_t> alive;
+    for (const auto& e : c.snapshot->entities) alive.insert(e.id);
+    for (auto i = c.mapping.begin(); i != c.mapping.end();) { if (!alive.count(i->first)) i = c.mapping.erase(i); else ++i; }
+    static uint32_t logged = 0;
+    if (c.snapshot->sequence % 60 == 0 && c.snapshot->sequence != logged) {
+        logged = c.snapshot->sequence; log("applied " + std::to_string(c.snapshot->entities.size()) +
+            " objects; created=" + std::to_string(made) + "; missing=" + std::to_string(missing) + "; text mismatches=" + std::to_string(text_mismatch) +
+            "; counter mismatches=" + std::to_string(counter_mismatch));
+    }
+    while (!c.audio.empty()) {
+        auto m = c.audio.front();
+        if (m.at("frame").get<int>() != c.frame) { c.audio.pop_front(); continue; }
+        c.audio.pop_front();
+        for (const auto& id : m.at("ids")) { c.audio_pending = id; generate(23); }
+        c.audio_pending = -1;
+    }
+}
+
+std::wstring field(int id) { wchar_t b[2048]; GetDlgItemTextW(ctx().window, id, b, 2048); return b; }
+void send(Json message) { if (ctx().connection) ctx().connection->send(message); }
+void refresh_ui() {
+    auto& c = ctx();
+    if (!c.window) return;
+    SetWindowTextW(c.status, c.message.c_str());
+    SendMessageW(c.list, LB_RESETCONTENT, 0, 0);
+    if (c.joined) {
+        for (const auto& m : c.members) {
+            auto text = L"P" + std::to_wstring(m.at("slot").get<int>() + 1) + L"  " + fwum::widen(m.at("name").get<std::string>());
+            SendMessageW(c.list, LB_ADDSTRING, 0, LPARAM(text.c_str()));
+        }
+    } else for (const auto& r : c.rooms) {
+        auto text = fwum::widen(r.at("name").get<std::string>()) + L"   " + std::to_wstring(r.at("players").get<int>()) + L"/4" +
+            (r.at("locked").get<bool>() ? L"   [code]" : L"   [open]");
+        SendMessageW(c.list, LB_ADDSTRING, 0, LPARAM(text.c_str()));
+    }
+    EnableWindow(GetDlgItem(c.window, 104), c.connected && !c.joined);
+    EnableWindow(GetDlgItem(c.window, 105), c.connected && !c.joined);
+    EnableWindow(GetDlgItem(c.window, 106), c.hosting && !c.playing);
+    EnableWindow(GetDlgItem(c.window, 107), c.joined);
+    EnableWindow(GetDlgItem(c.window, 100), !c.joined);
+    if (c.badge) SetWindowTextW(c.badge, c.joined ? (L"Co-op " + std::to_wstring(c.players) + L"/4 [F10]").c_str() : L"Online co-op [F10]");
+}
+void connect() {
+    auto& c = ctx();
+    if (c.endpoint.empty()) { c.message = L"The online service hasn't been configured for this build yet."; refresh_ui(); return; }
+    if (c.connection) c.connection->stop();
+    c.connected = false; c.message = L"Connecting..."; refresh_ui();
+    auto name = fwum::narrow(field(101));
+    WritePrivateProfileStringW(L"online", L"name", field(101).c_str(), c.ini.c_str());
+    c.connection = fwum::Connection::open(c.endpoint, {{"type", "hello"}, {"protocol", 1},
+        {"build", fwum::narrow(c.build)}, {"name", name}});
+}
+LRESULT CALLBACK menu_proc(HWND window, UINT message, WPARAM w, LPARAM l) {
+    auto& c = ctx();
+    if (message == WM_CLOSE) { ShowWindow(window, SW_HIDE); return 0; }
+    if (message == WM_COMMAND) {
+        const int id = LOWORD(w);
+        if (id == 100) connect();
+        if (id == 104) send({{"type", "host"}, {"name", fwum::narrow(field(102))}, {"pin", fwum::narrow(field(103))}});
+        if (id == 105 || (id == 110 && HIWORD(w) == LBN_DBLCLK)) {
+            auto selected = SendMessageW(c.list, LB_GETCURSEL, 0, 0);
+            if (!c.joined && selected >= 0 && size_t(selected) < c.rooms.size()) send({{"type", "join"},
+                {"id", c.rooms[size_t(selected)].at("id")}, {"pin", fwum::narrow(field(103))}});
+        }
+        if (id == 106) send({{"type", "start"}});
+        if (id == 107) send({{"type", "leave"}});
+        if (id == 108) { ShowWindow(window, SW_HIDE); SetForegroundWindow(c.game); }
+        if (id == 109) send({{"type", "browse"}});
+        return 0;
+    }
+    return DefWindowProcW(window, message, w, l);
+}
+void menu() {
+    auto& c = ctx();
+    if (!c.window) {
+        WNDCLASSW wc{}; wc.lpfnWndProc = menu_proc; wc.hInstance = instance; wc.hbrBackground = HBRUSH(COLOR_BTNFACE + 1);
+        wc.lpszClassName = L"FWUMOnlineMenu"; wc.hCursor = LoadCursor(nullptr, IDC_ARROW); RegisterClassW(&wc);
+        RECT r{}; GetWindowRect(c.game, &r);
+        c.window = CreateWindowExW(WS_EX_CONTROLPARENT, wc.lpszClassName, L"FNaF World Ultra - Online co-op",
+            WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU, r.left + 20, r.top + 30, 590, 510, c.game, nullptr, instance, nullptr);
+        auto control = [&](const wchar_t* type, const wchar_t* text, int id, int x, int y, int width, int height, DWORD style = 0) {
+            auto h = CreateWindowExW(0, type, text, WS_CHILD | WS_VISIBLE | style, x, y, width, height,
+                c.window, HMENU(INT_PTR(id)), instance, nullptr);
+            SendMessageW(h, WM_SETFONT, WPARAM(GetStockObject(DEFAULT_GUI_FONT)), TRUE); return h;
+        };
+        control(L"STATIC", L"Your name", 0, 16, 18, 85, 22);
+        control(L"EDIT", setting(L"name", L"Player").c_str(), 101, 105, 16, 275, 25, WS_BORDER | ES_AUTOHSCROLL | WS_TABSTOP);
+        control(L"BUTTON", L"Connect", 100, 397, 14, 155, 30, WS_TABSTOP);
+        control(L"STATIC", L"Lobby name", 0, 16, 56, 85, 22);
+        control(L"EDIT", L"Freddy's co-op", 102, 105, 53, 447, 25, WS_BORDER | ES_AUTOHSCROLL | WS_TABSTOP);
+        control(L"STATIC", L"Code (optional)", 0, 16, 93, 110, 22);
+        auto pin = control(L"EDIT", L"", 103, 132, 89, 90, 25, WS_BORDER | ES_NUMBER | ES_PASSWORD | WS_TABSTOP);
+        SendMessageW(pin, EM_SETLIMITTEXT, 4, 0);
+        control(L"STATIC", L"Leave empty for an open lobby", 0, 240, 93, 310, 22);
+        c.list = control(L"LISTBOX", L"", 110, 16, 130, 536, 188, WS_BORDER | WS_VSCROLL | LBS_NOTIFY | WS_TABSTOP);
+        control(L"BUTTON", L"Host game", 104, 16, 330, 125, 32, WS_TABSTOP);
+        control(L"BUTTON", L"Join selected", 105, 153, 330, 125, 32, WS_TABSTOP);
+        control(L"BUTTON", L"Refresh", 109, 290, 330, 125, 32, WS_TABSTOP);
+        control(L"BUTTON", L"Start co-op", 106, 427, 330, 125, 32, WS_TABSTOP);
+        c.status = control(L"STATIC", c.message.c_str(), 0, 16, 376, 536, 42);
+        control(L"BUTTON", L"Leave session", 107, 16, 428, 162, 30, WS_TABSTOP);
+        control(L"BUTTON", L"Back to game", 108, 390, 428, 162, 30, WS_TABSTOP);
+        SendDlgItemMessageW(c.window, 101, EM_SETLIMITTEXT, 24, 0);
+        SendDlgItemMessageW(c.window, 102, EM_SETLIMITTEXT, 40, 0);
+    }
+    refresh_ui(); ShowWindow(c.window, SW_SHOW); SetForegroundWindow(c.window);
+    if (!c.connection) connect();
+}
+}
+
+// Fusion calls conditions using a single long mask parameter. Offline calls are
+// forwarded to XBOXGamepad; online calls read the assigned local/remote slots.
+namespace {
+using CondFn = BOOL(WINAPI*)(LPHO, long, long);
+using ExpFn = long(WINAPI*)(LPHO, long);
+using ActFn = short(WINAPI*)(LPHO, long, long);
+CondFn offline_conditions[16]{};
+ExpFn offline_expressions[2]{};
+LPHO offline_object() {
+    for (auto ho : objects()) if (ho->hoIdentifier == 0x5842584a) return ho;
+    return nullptr;
+}
+template<int N> BOOL WINAPI condition(LPHO ho, long p1, long p2) {
+    auto& c = ctx();
+    if constexpr (N == authority) {
+        return !(c.joined && !c.hosting) && !c.exit_session;
+    }
+    if constexpr (N == needs_frame) return c.playing && !c.hosting && c.snapshot && c.snapshot->frame != c.frame;
+    if constexpr (N == create_pending || N == text_pending || N == show_pending || N == 23 || N == 24) return TRUE;
+    if constexpr (N == 21) return c.exit_session && !c.exit_queued;
+    if constexpr (N == 22) return c.playing;
+    if constexpr (N == 25) return select_target();
+    if constexpr (N < 16) {
+        if (!c.playing) {
+            auto original = offline_object();
+            return original && offline_conditions[N] ? offline_conditions[N](original, p1, p2) : FALSE;
+        }
+        if constexpr (N == 0) return p1 >= 0 && p1 < c.players;
+        const WORD bits[] = {0, XINPUT_GAMEPAD_A, XINPUT_GAMEPAD_B, XINPUT_GAMEPAD_X, XINPUT_GAMEPAD_Y,
+            XINPUT_GAMEPAD_BACK, XINPUT_GAMEPAD_LEFT_THUMB, XINPUT_GAMEPAD_LEFT_SHOULDER, XINPUT_GAMEPAD_RIGHT_THUMB,
+            XINPUT_GAMEPAD_RIGHT_SHOULDER, 0, XINPUT_GAMEPAD_START, XINPUT_GAMEPAD_DPAD_UP,
+            XINPUT_GAMEPAD_DPAD_DOWN, XINPUT_GAMEPAD_DPAD_LEFT, XINPUT_GAMEPAD_DPAD_RIGHT};
+        for (int i = 0; i < c.players; ++i) if ((p1 & (1 << i)) && (c.pads[i].buttons & bits[N])) return TRUE;
+    }
+    return FALSE;
+}
+template<int N> long WINAPI expression(LPHO ho, long param) {
+    auto& c = ctx();
+    ho->hoFlags &= ~(HOF_STRING | HOF_FLOAT);
+    if constexpr (N < 2) {
+        if (!c.playing) {
+            auto original = offline_object();
+            return original && offline_expressions[N] ? offline_expressions[N](original, param) : 0;
+        }
+        const int mask = CNC_GetFirstExpressionParameter(reinterpret_cast<Data*>(ho), param, TYPE_LONG);
+        for (int i = 0; i < c.players; ++i) if (mask & (1 << i)) {
+            const int v = N == 0 ? c.pads[i].lx : -int(c.pads[i].ly);
+            if (std::abs(v) > 7000) return v * 100 / 32768;
+        }
+        return 0;
+    }
+    if constexpr (N == 2) return c.snapshot ? c.snapshot->frame + 1 : c.frame + 1;
+    if constexpr (N == 3) return c.snapshot ? c.snapshot->camera_x + c.snapshot->width / 2 : 0;
+    if constexpr (N == 4) return c.snapshot ? c.snapshot->camera_y + c.snapshot->height / 2 : 0;
+    if constexpr (N == 5) {
+        ho->hoFlags |= HOF_STRING;
+        const auto& text = c.entity ? c.entity->text : std::u16string();
+        auto result = reinterpret_cast<wchar_t*>(callRunTimeFunction(reinterpret_cast<Data*>(ho),
+            RFUNCTION_GETSTRINGSPACE_EX, 0, (text.size() + 1) * sizeof(wchar_t)));
+        if (result) { std::memcpy(result, text.data(), text.size() * sizeof(wchar_t)); result[text.size()] = 0; }
+        return long(result);
+    }
+    if constexpr (N == 6) {
+        if (!c.entity) return 0;
+        if (c.entity->floating) {
+            const float value = float(c.entity->value); long bits; std::memcpy(&bits, &value, sizeof bits);
+            ho->hoFlags |= HOF_FLOAT; return bits;
+        }
+        return long(std::clamp(c.entity->value, double(INT32_MIN), double(INT32_MAX)));
+    }
+    if constexpr (N == 7) return c.creating;
+    if constexpr (N == 8) {
+        return c.entity ? c.entity->oi : -1;
+    }
+    if constexpr (N == 9) return c.audio_pending;
+    return 0;
+}
+short WINAPI begin(LPHO ho, long frame, long) {
+    auto& c = ctx(); c.data = reinterpret_cast<Data*>(ho);
+    if (c.frame != frame) { c.mapping.clear(); c.applied_sequence = uint32_t(-1); c.frame = int(frame); log("frame " + std::to_string(frame) + " objects=" + std::to_string(objects().size())); }
+    try { network(); }
+    catch (const std::exception& e) {
+        c.message = L"The lobby sent an invalid response. Please reconnect.";
+        log(e.what()); c.connected = false; c.connection_failed = true;
+        if (c.connection) c.connection->stop(); release_session(); refresh_ui();
+    }
+    return 0;
+}
+short WINAPI finish(LPHO, long, long) {
+    auto& c = ctx();
+    if (!c.playing) return 0;
+    try {
+        if (c.hosting && !c.audio_out.empty()) {
+            send({{"type", "audio"}, {"frame", c.frame}, {"ids", c.audio_out}}); c.audio_out = Json::array();
+        }
+        if (c.hosting && GetTickCount64() - c.state_at >= 50) {
+            c.state_at = GetTickCount64(); auto state = capture();
+            if (state.sequence % 60 == 0) log("captured " + std::to_string(state.entities.size()) + " objects");
+            c.connection->send_world(fwum::encode(state));
+        } else if (!c.hosting) apply();
+    } catch (const std::exception& e) { c.message = fwum::widen(e.what()); refresh_ui(); }
+    return 0;
+}
+short WINAPI created(LPHO, long, long) {
+    auto& c = ctx(); auto all = objects();
+    for (auto ho : all) if (ho->hoOi == c.creating && ho->hoCreationId == header()->rh2.rh2CreationCount) c.created = ho;
+    return 0;
+}
+short WINAPI clear_exit(LPHO, long, long) { ctx().exit_queued = true; return 0; }
+short WINAPI report_audio(LPHO, long id, long) {
+    auto& c = ctx();
+    if (c.playing && c.hosting && c.audio_out.size() < 128) c.audio_out.push_back(id);
+    return 0;
+}
+CondFn conditions[] = {condition<0>, condition<1>, condition<2>, condition<3>, condition<4>, condition<5>, condition<6>,
+    condition<7>, condition<8>, condition<9>, condition<10>, condition<11>, condition<12>, condition<13>, condition<14>,
+    condition<15>, condition<16>, condition<17>, condition<18>, condition<19>, condition<20>, condition<21>, condition<22>, condition<23>, condition<24>, condition<25>};
+ActFn actions[] = {begin, finish, created, clear_exit, report_audio};
+ExpFn expressions[] = {expression<0>, expression<1>, expression<2>, expression<3>, expression<4>, expression<5>, expression<6>, expression<7>, expression<8>, expression<9>};
+}
+extern "C" {
+BOOL WINAPI DllMain(HINSTANCE h, DWORD reason, LPVOID) { if (reason == DLL_PROCESS_ATTACH) instance = h; return TRUE; }
+DWORD WINAPI GetInfos(int i) {
+    switch (i) { case KGI_VERSION: return EXT_VERSION2; case KGI_PLUGIN: return EXT_PLUGIN_VERSION1;
+        case KGI_PRODUCT: return PRODUCT_VERSION_STANDARD; case KGI_BUILD: return 295; case KGI_UNICODE: return TRUE; default: return 0; }
+}
+short WINAPI Initialize(mv*, int) { return 0; }
+short WINAPI Free(mv*) { if (ctx().connection) ctx().connection->stop(); return 0; }
+ushort WINAPI GetRunObjectDataSize(fprh, void*) { return sizeof(Data); }
+short WINAPI CreateRunObject(Data* d, void*, fpcob) {
+    auto& c = ctx(); c.data = d; d->frame = -1;
+    HMODULE pinned = nullptr;
+    GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_PIN,
+        reinterpret_cast<LPCWSTR>(&CreateRunObject), &pinned);
+    if (c.exit_queued) { c.exit_queued = c.exit_session = false; c.frame = -1; }
+    // Online hosts keep serving peers when another window is focused.
+    d->rHo.hoAdRunHeader->rhApp->m_hdr.gaNewFlags |= GANF_RUNWHENMINIMIZED;
+    if (c.ini.empty()) {
+        wchar_t path[2048]; GetModuleFileNameW(nullptr, path, 2048);
+        c.ini = path; c.ini = c.ini.substr(0, c.ini.find_last_of(L"\\/") + 1) + L"FWUM-online.ini";
+        c.endpoint = setting(L"server", L""); c.build = setting(L"build", L"");
+        auto module_path = c.ini.substr(0, c.ini.find_last_of(L"\\/") + 1) + L"Modules\\XBOXGamepad.mfx";
+        auto module = LoadLibraryW(module_path.c_str());
+        if (module) {
+            using Info = short(WINAPI*)(mv*, fpKpxRunInfos);
+            auto get = reinterpret_cast<Info>(GetProcAddress(module, "GetRunObjectInfos"));
+            if (get) { kpxRunInfos info{}; get(nullptr, &info);
+                for (int i = 0; i < 16 && i < info.numOfConditions; ++i) offline_conditions[i] = reinterpret_cast<CondFn*>(info.conditions)[i];
+                for (int i = 0; i < 2 && i < info.numOfExpressions; ++i) offline_expressions[i] = reinterpret_cast<ExpFn*>(info.expressions)[i]; }
+        }
+    }
+    log("native extension created; " + std::to_string(objects().size()) + " runtime objects");
+    return 0;
+}
+short WINAPI DestroyRunObject(Data* d, long) { if (ctx().data == d) ctx().data = nullptr; return 0; }
+short WINAPI HandleRunObject(Data* d) {
+    auto& c = ctx(); c.data = d; c.game = d->rHo.hoAdRunHeader->rhHMainWin;
+    if (c.badge && IsWindow(c.badge) && GetWindow(c.badge, GW_OWNER) != c.game) {
+        DestroyWindow(c.badge); c.badge = nullptr;
+    }
+    if (c.window && IsWindow(c.window)) SetWindowLongPtrW(c.window, GWLP_HWNDPARENT, LONG_PTR(c.game));
+    if (!c.badge || !IsWindow(c.badge)) {
+        POINT p{8, 8}; ClientToScreen(c.game, &p);
+        c.badge = CreateWindowExW(WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE, L"BUTTON", L"Online co-op [F10]", WS_POPUP | WS_VISIBLE | BS_PUSHBUTTON,
+            p.x, p.y, 150, 25, c.game, nullptr, instance, nullptr);
+        badge_proc_original = reinterpret_cast<WNDPROC>(SetWindowLongPtrW(c.badge, GWLP_WNDPROC, LONG_PTR(badge_proc)));
+    }
+    if (c.badge) {
+        POINT p{8, 8}; ClientToScreen(c.game, &p);
+        SetWindowPos(c.badge, nullptr, p.x, p.y, 0, 0, SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOZORDER);
+    }
+    const bool down = (GetAsyncKeyState(VK_F10) & 0x8000) &&
+        (GetForegroundWindow() == c.game || GetForegroundWindow() == c.window);
+    if (down && !c.key_down) {
+        if (c.window && IsWindowVisible(c.window)) ShowWindow(c.window, SW_HIDE); else menu();
+    }
+    c.key_down = down;
+    static int calls = 0;
+    if (++calls == 60) log("handle alive frame=" + std::to_string(c.frame) + " objects=" + std::to_string(objects().size()));
+    return 0;
+}
+short WINAPI DisplayRunObject(Data*) { return 0; }
+short WINAPI PauseRunObject(Data*) { return 0; }
+short WINAPI ContinueRunObject(Data*) { return 0; }
+short WINAPI GetRunObjectInfos(mv*, fpKpxRunInfos info) {
+    memset(info, 0, sizeof(*info)); info->conditions = reinterpret_cast<EXTCONDROUTINE*>(conditions);
+    info->actions = reinterpret_cast<EXTACTROUTINE*>(actions); info->expressions = reinterpret_cast<EXTEXPROUTINE*>(expressions);
+    info->numOfConditions = 26; info->numOfActions = 5; info->numOfExpressions = 10;
+    info->editFlags = OEFLAG_NEVERSLEEP | OEFLAG_NEVERKILL; info->identifier = 0x4e4d5746; return TRUE;
+}
+}

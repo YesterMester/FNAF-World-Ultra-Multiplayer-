@@ -1,0 +1,28 @@
+name: Online co-op checks
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  relay-and-packets:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: online/server/package-lock.json
+      - run: npm ci --ignore-scripts
+        working-directory: online/server
+      - run: npm test
+        working-directory: online/server
+      - name: Validate native state packets
+        run: |
+          g++ -std=c++17 -O2 online/native/snapshot_test.cpp -o /tmp/fwum-snapshot-test
+          /tmp/fwum-snapshot-test
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python patcher/selftest.py

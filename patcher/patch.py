@@ -28,6 +28,8 @@ def main():
                     help="download whichever of the two games was not given from Game Jolt")
     ap.add_argument("--downloads", default="fwum-downloads", help="where downloads are kept")
     ap.add_argument("--out", required=True, help="output folder for the merged game")
+    ap.add_argument("--online-extension", help="path to a built FWUMOnline.mfx (bundled automatically in releases)")
+    ap.add_argument("--relay-url", help="online lobby service, e.g. wss://your-service/lobbies")
     ap.add_argument("--debug", action="store_true", help=argparse.SUPPRESS)
     ap.add_argument("--test-jump", action="store_true", help=argparse.SUPPRESS)
     ap.add_argument("--baseline", action="store_true", help=argparse.SUPPRESS)
@@ -41,7 +43,8 @@ def main():
                 ultra = download.get_ultra(args.downloads)
             if not mp:
                 mp = download.get_mp(args.downloads)
-        build(ultra, mp, args.out, debug=args.debug, test_jump=args.test_jump, baseline=args.baseline)
+        build(ultra, mp, args.out, debug=args.debug, test_jump=args.test_jump, baseline=args.baseline,
+              online_extension=args.online_extension, relay_url=args.relay_url)
     except (MergeError, RuntimeError, OSError) as e:
         print("error:", e)
         return 1

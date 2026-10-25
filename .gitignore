@@ -5,3 +5,5 @@ dist/
 *.spec
 fwum-downloads/
 FNaF World Ultra Multiplayer/
+
+node_modules/

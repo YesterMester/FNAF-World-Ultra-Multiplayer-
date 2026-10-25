@@ -1,0 +1,12 @@
+EXPORTS
+GetInfos @2
+Initialize @25
+Free @26
+CreateRunObject @50
+DestroyRunObject @51
+HandleRunObject @52
+DisplayRunObject @53
+PauseRunObject @57
+ContinueRunObject @58
+GetRunObjectInfos @59
+GetRunObjectDataSize @80
