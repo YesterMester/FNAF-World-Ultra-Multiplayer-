@@ -89,7 +89,7 @@ jobs:
           names = ['FWUM-Patcher-Windows.exe', 'FWUM-Patcher-Linux-SteamDeck']
           sums = []
           for name in names:
-              path = next(Path('dist').rglob(name))
+              path = next(p for p in Path('dist').rglob(name) if p.is_file())
               sums.append(f'{hashlib.sha256(path.read_bytes()).hexdigest()}  {name}\n')
           sha = os.environ['GITHUB_SHA']
           Path('dist/SHA256SUMS.txt').write_text(f'# Source commit: {sha}\n' + ''.join(sums))
