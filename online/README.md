@@ -6,8 +6,9 @@ and render the host's objects, strings, counters, camera and layers using their
 own game assets. No screen stream, controller driver, router forwarding or
 player account is needed.
 
-This is a development preview. Do not replace the stable release until the
-in-game validation checklist below is complete and a public relay is configured.
+The official patchers include the public relay address. The relay is deployed at
+`wss://fwum-relay.famous-cry.workers.dev/lobbies`; players use the in-game menu
+without configuring hosting.
 
 ## Player flow
 
@@ -150,23 +151,31 @@ g++ -std=c++17 -O2 online/native/snapshot_test.cpp -o /tmp/fwum-snapshot-test
 python3 patcher/selftest.py --game "/path/to/Fnaf World Ultra.dat"
 ```
 
-Before releasing, verify in two real game instances:
+Real gameplay testing on a Steam Deck uses two independent Windows game
+processes under Proton 11 through Steam Linux Runtime 4. The checks include:
 
-- [ ] Create an open lobby and a locked lobby using `0042`; confirm both join flows.
-- [ ] Start a new game and continue a host save; verify the guest's save stays intact.
-- [ ] Walk independently with two and four players and switch areas together.
-- [ ] Complete battles using each player's assigned turns; verify HP, text, party switches and audio.
-- [ ] Join an already running session and disconnect a controller/guest without stuck movement.
-- [ ] Leave as guest and as host, then reconnect successfully.
-- [ ] Complete the above across Windows and Steam Deck over the public WSS endpoint.
+- Open lobbies and locked `0042` lobbies over the public WSS relay.
+- Normal new-game setup, host save continuation and guest save preservation.
+- Independent walkers and complete battles, with each of P1-P4 confirming their
+  own turns. Two additional protocol clients exercise P3/P4 alongside the two
+  real game processes; P1 cannot confirm another player's turn.
+- Late joins, guest leave/rejoin and host closure returning guests to their own title.
+- Actual text/counter readback, including newly created objects, negative values
+  and signed 32-bit limits. The format checks cover all 39 game frames.
+- Connection resumption after a local Cloudflare runtime restart, retaining seats.
 
-Lab checks have verified a real Proton host and guest joining a `0042` lobby
-through the local Cloudflare runtime, independent remote walker movement, and
-both games automatically resuming their original seats after that relay was
-restarted. Text/counter values are checked through the actual Fusion engine.
-Full visual equivalence and battles remain unverified; the stock game also
-renders black in the current Wine virtual-desktop lab.
+The Windows and Linux patchers share one Windows-built native module. Testing on this computer runs the Windows executable through Proton; a separate
+physical Windows machine was not available for a hardware cross-play test.
+
+The renderer sends bounded scalar shader state and display geometry, while each
+client creates effects and loads textures locally. Music loops, channel volume
+and pause state are restored on midgame joins and reconnects. No GPU pointers,
+video streams, game assets or save files travel through the relay.
 
 For private lab diagnostics, add `diagnostics=C:\path\to\fwum.log` under
 `[online]` in `FWUM-online.ini`. It logs frame transitions and snapshot counts;
 it does not record PINs or save contents.
+An optional `state_file=C:\path\to\world.bin` writes a bounded copy of the
+local visible state every 250 ms for automated gameplay checks. It uses the
+same binary codec as the relay and contains no lobby tokens or PINs. These
+diagnostics are disabled unless a local filename is configured.

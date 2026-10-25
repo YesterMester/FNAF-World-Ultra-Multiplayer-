@@ -2,14 +2,14 @@
 
 **FNaF World Ultra** + **FNaF World Local Multiplayer**, combined: Ultra's 300+ characters,
 new areas and attacks, played with controllers and with up to **4 players sharing the battles**.
-Works on **Windows** and **Steam Deck**, and you can play **online with a friend for free**
-using peer-to-peer remote play (see [Playing online](#playing-online-free-peer-to-peer)).
+Works on **Windows** and **Steam Deck**, with local co-op and built-in native
+online play for up to **four players**. Open **Online co-op** or press **F10**,
+choose **Host game**, and friends can find your lobby in the game. Leave the code
+empty for an open game, or protect it with exactly **four digits**.
 
-**Native online co-op development:** this branch adds an in-game lobby browser,
-hosting, and optional four-digit access codes, with everyone running their own
-copy of the game. See [native online setup and validation](online/README.md).
-The public relay and full gameplay validation are required before this replaces
-the stable online instructions below.
+The free public lobby service is included in the official patchers. Each player
+runs their own copy of the game; the host owns the save and operates mouse menus.
+See [online details and testing](online/README.md).
 
 This repository holds a **patcher**, not the games. The patcher downloads both mods from
 their official Game Jolt pages (or uses copies you already have) and builds the merged game
@@ -17,12 +17,16 @@ on your computer.
 
 | | |
 |---|---|
-| FNaF World Ultra | v3.0.9, <https://gamejolt.com/games/FWU/996891> |
+| FNaF World Ultra | download v3.0.9 (in-game title v3.1.0), <https://gamejolt.com/games/FWU/996891> |
 | FNaF World Local Multiplayer | v0.0.4, <https://gamejolt.com/games/FWLOCAL/937743> |
 
 ---
 
 ## What the merged game adds to Ultra
+
+* **Native online co-op:** public lobby browser, hosting, optional four-digit PIN,
+  late joining and automatic recovery after brief connection interruptions.
+  Each computer contributes one player; no router configuration or player account is needed.
 
 * **Controller support** (Xbox-style / XInput, up to 4 at once) everywhere Ultra has keyboard
   controls: walking around, the map, running from battles, dialogue, and the minigames.
@@ -47,7 +51,7 @@ on your computer.
 * **F9** (while exploring) makes the **keyboard/mouse player Player 1** and turns the
   controllers into Players 2 to 4. Press it again to switch back. A sparkle sound means
   keyboard = P1, a "tink" means controllers only. This is for a host who plays with mouse and
-  keyboard while a friend joins online with a controller.
+  keyboard while friends use local controllers. Native online mode assigns P1 automatically.
 
 ### Controls
 
@@ -61,8 +65,8 @@ on your computer.
 | **RB** | switch party in battle |
 
 Menus (main menu, party, chips, bytes, shops, options) are still mouse/touch. On Steam Deck,
-tap the touchscreen or use the right trackpad as a mouse. Online, Parsec passes your friend's
-mouse through as well.
+tap the touchscreen or use the right trackpad as a mouse. In native online mode,
+the host operates these menus for the shared game.
 
 ---
 
@@ -88,11 +92,13 @@ progress carries on.
 2. Right-click it, then *Properties → Permissions → Is executable*, and double-click it to run.
 3. Build the game as in the Windows steps above. You can also build on a PC and copy the
    folder over.
-4. In Steam (desktop mode): *Games → Add a Non-Steam Game to My Library → Browse*, set the file
+4. In Desktop Mode, open **`Play Multiplayer.sh`** in the built game folder. It finds
+   your installed Proton and its Steam runtime automatically.
+5. For Gaming Mode, in Steam (desktop mode): *Games → Add a Non-Steam Game to My Library → Browse*, set the file
    type to *All Files*, and pick `Fnaf World Ultra.exe` in the new folder.
-5. Right-click the new entry, then *Properties → Compatibility → Force the use of a specific
+6. Right-click the new entry, then *Properties → Compatibility → Force the use of a specific
    Steam Play compatibility tool* → **Proton Experimental** (or Proton 9).
-6. Back in Gaming Mode, start it. The Deck's own controls are **Player 1**. Pair more
+7. Back in Gaming Mode, start it. The Deck's own controls are **Player 1**. Pair more
    controllers over Bluetooth for Players 2 to 4.
 
 ### Any computer with Python 3
@@ -109,38 +115,27 @@ downloadable patcher.
 
 ---
 
-## Playing online (free, peer-to-peer)
+## Playing online
 
-The merged game supports up to 4 controllers on one computer. Any remote-play app that sends
-a friend's controller to the host as a virtual Xbox controller therefore turns it into online
-co-op. The host runs the game, and everyone else streams it.
+1. Everyone builds the game with the same version of the official patcher.
+2. Open **Online co-op** or press **F10**, and enter your player name. The lobby
+   connects automatically.
+3. Host: choose a lobby name, leave **Code** empty or enter exactly four digits,
+   and click **Host game**, then **Start co-op**.
+4. Friends: select that lobby, enter its code when locked, and click **Join selected**.
+   You can join before starting or while the host is already playing.
+5. The host starts a new game or continues a save. Guests use their own controller
+   or **WASD/arrows**, **Z/Enter** to confirm, **R** to flee, **Tab** for the map,
+   and **E** to switch parties. Follow the `P#:` prompt for battle turns.
+6. **F10 → Leave session** leaves the game. Guests return to their own title screen;
+   the host's progress stays on the host's computer.
 
-### Parsec (host on Windows): easiest
+The shared Cloudflare relay is free and keeps lobby sockets connected while idle.
+Free hosting has daily capacity limits and no guarantee of zero downtime. Service
+configuration and hosting details are in [online/README.md](online/README.md).
 
-1. Both of you install [Parsec](https://parsec.app) and make free accounts. The friend can be
-   on Windows, Mac, Linux, Android or a Steam Deck (*Discover* store → Parsec).
-2. Host: start FNaF World Ultra Multiplayer, open Parsec and share your computer with your
-   friend (*Share* → invite link, or add them as a friend).
-3. Friend: connect, then **press a face button on your controller**. Parsec adds it to the
-   host as an Xbox 360 controller, and it becomes the next player in the game.
-4. If the host plays with keyboard and mouse rather than a controller, press **F9** in the
-   game so the host counts as Player 1.
-
-Parsec connects the two computers directly (peer-to-peer). If a controller doesn't show up,
-see Parsec's [controller troubleshooting](https://support.parsec.app/hc/en-us/articles/32381826078868-Controller-Isn-t-Working-in-the-Game).
-
-### Host on a Steam Deck: Sunshine + Moonlight
-
-Parsec can't host from Linux, so a Steam Deck host uses the free
-[Sunshine](https://app.lizardbyte.dev/Sunshine/) streaming host (*Discover* store) with the
-friend on [Moonlight](https://moonlight-stream.org). Put both devices on the same free
-[Tailscale](https://tailscale.com) or ZeroTier network, so they can reach each other without
-router setup. The friend's controller arrives on the Deck as an extra controller.
-
-### Steam Remote Play Together
-
-Steam's built-in Remote Play Together doesn't officially work with non-Steam games like
-this one, so use one of the options above.
+For streaming an existing local session, Parsec or Sunshine/Moonlight can still
+provide remote controllers; the native lobby mode uses a separate game copy on each computer.
 
 ---
 

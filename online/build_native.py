@@ -65,13 +65,13 @@ def main():
     if Path(args.compiler).name.lower() in ("cl", "cl.exe"):
         command = [args.compiler, "/nologo", "/std:c++17", "/EHsc", "/O2", "/MT", "/LD", "/DWINVER=0x0602", "/D_WIN32_WINNT=0x0602",
                    "/I" + str(inc), "/I" + str(json_inc), str(src / "runtime.cpp"), "/link",
-                   "/DEF:" + str(src / "FWUMOnline.def"), "/OUT:" + str(output), str(inc.parent / "Lib/mmfs2.lib"),
+                   "/Brepro", "/DEF:" + str(src / "FWUMOnline.def"), "/OUT:" + str(output), str(inc.parent / "Lib/mmfs2.lib"),
                    "winhttp.lib", "user32.lib", "gdi32.lib", "advapi32.lib"]
     else:
         command = [args.compiler, "-std=c++17", "-shared", "-static", "-O2", "-fms-extensions", "-Wno-nonportable-include-path",
                    "-Wno-ignored-attributes", "-Wno-return-type", "-Wno-extra-tokens", "-DWINVER=0x0602", "-D_WIN32_WINNT=0x0602",
                    "-I" + str(inc), "-I" + str(json_inc), str(src / "runtime.cpp"), str(src / "FWUMOnline.def"),
-                   "-o", str(output), str(inc.parent / "Lib/mmfs2.lib"), "-lwinhttp", "-luser32", "-lgdi32", "-ladvapi32"]
+                   "-Wl,--no-insert-timestamp", "-o", str(output), str(inc.parent / "Lib/mmfs2.lib"), "-lwinhttp", "-luser32", "-lgdi32", "-ladvapi32"]
     subprocess.run(command, check=True, cwd=args.out)
     print("Built", output)
     print("SHA-256", hashlib.sha256(output.read_bytes()).hexdigest())

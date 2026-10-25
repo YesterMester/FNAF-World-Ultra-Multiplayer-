@@ -9,6 +9,7 @@ from .evb import Ids, act, a_set_gv, c_compare, clone, cond, expr, group, p_expr
 from .fusion import EXPR_PARAM_CODES, ObjectDef, Param
 from .merge import MergeError
 
+PUBLIC_RELAY = "wss://fwum-relay.famous-cry.workers.dev/lobbies"
 
 def find_extension():
     roots = [Path(getattr(sys, "_MEIPASS", "")), Path(__file__).resolve().parents[2]]
@@ -40,6 +41,54 @@ def add_online(m, module):
     struct.pack_into("<IIIII", props, 70, 20, 20, 0, 0, 0)
     o.props = bytes(props)
     m.objs.append(o)
+
+    def infinite_loop(a):
+        if a.object_type != -2 or a.num != 12 or len(a.params) != 3:
+            return False
+        p = a.params[2].data
+        return len(p) >= 12 and p[2:6] == struct.pack("<hh", -1, 0) and struct.unpack_from("<i", p, 8)[0] == 0
+
+    # Music may continue across areas. Every frame needs the same callbacks so
+    # late joins can restore the currently playing loop using local sound assets.
+    music = {}
+    shader_names, shader_params, shader_objects = {}, {}, {}
+    def shader_targets(a):
+        if a.object_info < 32768:
+            return [a.object_info]
+        return [ob.index for ob in m.objs if ob.type == a.object_type and len(ob.props) >= 36 and
+                (a.object_info & 32767) in struct.unpack_from("<8h", ob.props, 20)]
+    for f in m.frames:
+        for g in f.events.groups:
+            for a in g.actions:
+                if infinite_loop(a):
+                    music.setdefault(a.serialize(), clone(a))
+                if a.object_type in (2, 3, 7) and a.num in (63, 64):
+                    table = shader_names if a.num == 63 else shader_params
+                    key = a.params[0].data
+                    if a.num == 64 and (a.params[0].code != 45 or key[2:6] != struct.pack("<hh", -1, 3)):
+                        raise MergeError("dynamic shader parameter names are unsupported")
+                    table.setdefault(key, len(table))
+                    for oi in shader_targets(a):
+                        shader_objects.setdefault(oi, {63: set(), 64: set()})[a.num].add(key)
+    music_ids = {key: 32768 + i for i, key in enumerate(music)}
+    if len(music_ids) > 32768:
+        raise MergeError("too many music callbacks")
+    if len(shader_names) > 32768 or len(shader_params) > 256:
+        raise MergeError("too many shader names or parameters")
+
+    def audio_hook(audio_id, a):
+        channel = p_expr(t_long(0))
+        value = p_expr(t_long(0))
+        sample = -1
+        if a.num in (0, 4, 6, 7, 8, 11, 12) and a.params and a.params[0].code == 6:
+            sample = struct.unpack_from("<H", a.params[0].data)[0]
+        if a.num in (11, 12, 13, 14, 15, 16, 17, 18, 32):
+            p = a.params[1 if a.num in (11, 12) else 0]
+            channel = Param(22, p.data)
+        if a.num in (17, 18, 32):
+            value = Param(22, a.params[1].data)
+        return act(otype, 84, o.index, [p_expr(t_long(audio_id)), p_expr(t_long(a.num)),
+                                       channel, p_expr(t_long(sample)), value])
 
     def rewrite_parameter(parameter):
         if parameter.code not in EXPR_PARAM_CODES:
@@ -89,9 +138,20 @@ def add_online(m, module):
             for a in g.actions:
                 actions.append(a)
                 if a.object_type == -2:
-                    audio_id = len(audio_events)
-                    audio_events.append(clone(a))
-                    actions.append(act(otype, 84, o.index, [p_expr(t_long(audio_id))]))
+                    audio_id = music_ids.get(a.serialize())
+                    if audio_id is None:
+                        audio_id = len(audio_events)
+                        if audio_id >= 32768:
+                            raise MergeError("too many transient sound callbacks")
+                        audio_events.append(clone(a))
+                    actions.append(audio_hook(audio_id, a))
+                if a.object_type in (2, 3, 7) and a.num in (63, 64):
+                    table = shader_names if a.num == 63 else shader_params
+                    for oi in shader_targets(a):
+                        params = [p_expr(t_long(oi)), p_expr(t_long(table[a.params[0].data]))]
+                        if a.num == 64:
+                            params.append(Param(22, a.params[1].data))
+                        actions.append(act(otype, 86 if a.num == 63 else 87, o.index, params))
             if len(actions) > 255:
                 raise MergeError("too many actions in an event after adding online mode")
             g.actions = actions
@@ -101,13 +161,13 @@ def add_online(m, module):
         blocks = m.blocks(f)
         expression = lambda idx: (t_ext(otype, idx, o.index), t_close())
         condition = lambda idx, *params: cond(ids, otype, -81 - idx, o.index, params,
-                                              flags=0 if idx in (18, 19, 20, 23, 24, 26) else 32)
+                                              flags=0 if idx in (18, 19, 20, 23, 24, 26, 27, 28, 29, 30, 31) else 32)
         def callback(idx, value):
             # Fusion can treat the first triggered condition as already true.
             # Filter the callback explicitly, then select its precise instance.
             expression_index = 7 if idx == 18 else 9 if idx == 23 else 8
             conditions = [condition(idx), c_compare(ids, expression(expression_index), "=", (t_long(value),))]
-            if idx in (19, 20, 24, 26):
+            if idx in (19, 20, 24, 26, 28, 29, 30, 31):
                 conditions.append(condition(25))
             return conditions
         blocks[0][0:0] = [
@@ -117,7 +177,15 @@ def add_online(m, module):
             group([condition(22)], [a_set_gv(m.G["keyboard_p1"], t_long(0))]),
         ]
         for audio_id, a in enumerate(audio_events):
-            blocks[-1].append(group(callback(23, audio_id), [a]))
+            blocks[-1].append(group(callback(23, audio_id), [a, audio_hook(-1, a)]))
+        for key, a in music.items():
+            audio_id = music_ids[key]
+            blocks[-1].append(group(callback(23, audio_id), [clone(a), audio_hook(audio_id, a)]))
+        for opcode in (13, 14, 15, 17):
+            a = act(-2, opcode, params=[p_expr(*expression(10))] +
+                    ([p_expr(*expression(11))] if opcode == 17 else []))
+            blocks[-1].append(group([condition(27), c_compare(ids, expression(12), "=", (t_long(opcode),))],
+                                    [a, audio_hook(-1, a)]))
         # Each frame can instantiate only object types already used by that frame.
         references = {i.object_info: i for i in f.instances if m.objs[i.object_info].type in (2, 3, 7)}
         creates = {}
@@ -146,9 +214,26 @@ def add_online(m, module):
                 blocks[-1].append(group(callback(26, oi), [
                     act(otype, 85, o.index, [p_expr(t_objexp(7, 80, oi))])]))
             blocks[-1].append(group(callback(20, oi), [act(typ, 27, oi)]))
+            blocks[-1].append(group(callback(30, oi), [act(otype, 88, o.index, [
+                p_expr(t_objexp(typ, 27, oi)), p_expr(t_objexp(typ, 28, oi))])]))
+            blocks[-1].append(group(callback(31, oi), [
+                act(typ, 65, oi, [p_expr(*expression(16))]),
+                act(typ, 66, oi, [p_expr(*expression(17))])]))
+            blocks[-1].append(group(callback(28, oi) + [
+                c_compare(ids, expression(13), "=", (t_long(-1),))],
+                [act(typ, 63, oi, [Param(64, b"\0\0")])]))
+            for key in sorted(shader_objects.get(oi, {}).get(63, ())):
+                blocks[-1].append(group(callback(28, oi) + [
+                    c_compare(ids, expression(13), "=", (t_long(shader_names[key]),))],
+                    [act(typ, 63, oi, [Param(64, key)])]))
+            for key in sorted(shader_objects.get(oi, {}).get(64, ())):
+                blocks[-1].append(group(callback(29, oi) + [
+                    c_compare(ids, expression(14), "=", (t_long(shader_params[key]),))],
+                    [act(typ, 64, oi, [Param(45, key), p_expr(*expression(15))])]))
         blocks[-1].extend([
             group([cond(ids, otype, -81 - 16, o.index, other=1)], [
-                act(-3, 7, params=[p_expr(*expression(3)), p_expr(*expression(4))])]),
+                act(-3, 8, params=[p_expr(*expression(3))]),
+                act(-3, 9, params=[p_expr(*expression(4))])]),
             group([cond(ids, -1, -1)], [act(otype, 81, o.index)]),
         ])
         free_lines = (n for n in range(1, 32768) if n not in used_lines)
@@ -186,8 +271,10 @@ def default_relay():
     for root in (Path(getattr(sys, "_MEIPASS", "")), Path(__file__).resolve().parents[2] / "build/online"):
         path = root / "FWUM-server.txt"
         if path.is_file():
-            return path.read_text(encoding="utf-8").strip()
-    return ""
+            endpoint = path.read_text(encoding="utf-8").strip()
+            if endpoint:
+                return endpoint
+    return PUBLIC_RELAY
 
 
 def write_settings(out_dir, relay_url=None, build_id=None):
@@ -202,7 +289,7 @@ def write_settings(out_dir, relay_url=None, build_id=None):
     if build_id is None:
         raise MergeError("online build compatibility ID was not computed")
     cfg.set("online", "build", build_id)
-    if relay_url is not None or not cfg.has_option("online", "server"):
+    if relay_url is not None or not cfg.get("online", "server", fallback="").strip():
         cfg.set("online", "server", relay_url or default_relay())
     if not cfg.has_option("online", "name"):
         cfg.set("online", "name", "Player")

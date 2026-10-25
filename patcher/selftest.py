@@ -91,13 +91,18 @@ def test_game(path):
                       for a in first.actions), "online tick precedes game events in %r" % f.name)
             callbacks = [c for g in f.events.groups for c in g.conditions
                          if c.object_info == online.index and c.object_type == online.type
-                         and (-81 - c.num) in (18, 19, 20, 23, 24, 26)]
+                         and (-81 - c.num) in (18, 19, 20, 23, 24, 26, 27, 28, 29, 30, 31)]
             check(all(not c.flags & 32 for c in callbacks),
                   "native callbacks registered as triggered events in %r" % f.name)
             lines = [g.line for g in f.events.groups if g.conditions and
                      g.conditions[0].object_info == online.index and g.conditions[0].object_type == online.type]
             check(all(n > 0 for n in lines) and len(lines) == len(set(lines)),
                   "online callbacks have distinct event identifiers in %r" % f.name)
+            camera = [a for group in f.events.groups
+                      if any(c.object_type == online.type and c.num == -97 and c.other_flags & 1
+                             for c in group.conditions) for a in group.actions if a.object_type == -3]
+            check([a.num for a in camera] == [8, 9] and all(len(a.params) == 1 and a.params[0].code == 22 for a in camera),
+                  "guest camera uses numeric X/Y scroll actions in %r" % f.name)
     pc = g.chunk(0x2242)
     tc = g.chunk(0x222F)
     stored = struct.unpack("<I", pc.decode(g))[0]

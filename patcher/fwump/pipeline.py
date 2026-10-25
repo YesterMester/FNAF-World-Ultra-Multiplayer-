@@ -5,6 +5,7 @@ import shutil
 from .evb import t_gv
 from .merge import OVERWORLD, Merger, MergeError
 from .online import add_online, compatibility_id, find_extension, write_settings
+from .launcher import write_launcher
 
 VERSION = "1.1.0"
 
@@ -46,6 +47,7 @@ def build(ultra_dir, mp_exe, out_dir, log=print, debug=False, test_jump=False, b
         write_settings(out_dir, relay_url, online_build_id)
     with open(os.path.join(out_dir, "MULTIPLAYER-README.txt"), "w", encoding="utf-8") as fh:
         fh.write(PLAY_NOTES)
+    write_launcher(out_dir)
     log("done")
     return out_dir
 
@@ -53,8 +55,10 @@ def build(ultra_dir, mp_exe, out_dir, log=print, debug=False, test_jump=False, b
 PLAY_NOTES = """FNaF World Ultra Multiplayer (patcher v%s)
 ==========================================
 
-Start "Fnaf World Ultra.exe" in this folder (Steam Deck: add it to Steam as a
-non-Steam game and force Proton in its Compatibility settings).
+Windows: start "Fnaf World Ultra.exe" in this folder.
+Steam Deck desktop: open "Play Multiplayer.sh". It finds your installed Proton
+and Steam runtime automatically. For Gaming Mode, add the EXE to Steam as a
+non-Steam game and force Proton in its Compatibility settings.
 
 Controllers (Xbox-style, up to 4; Steam Deck controls count as controller 1):
   Left stick / D-pad   walk (everyone has a Freddy), move in minigames
@@ -78,16 +82,13 @@ F9 (while exploring): the keyboard/mouse player becomes Player 1 and the
 controllers become Players 2-4 (press again to switch back). Handy when the
 host plays with mouse and keyboard and a friend joins over the internet.
 
-Playing online: host with Parsec (Windows) or Sunshine + Moonlight (Steam Deck);
-the friend's controller shows up as an extra controller. Setup steps are on the
-project page.
-
-Native online preview (builds with the online extension): click Online co-op or
+Playing online: click Online co-op or
 press F10. Host game makes a visible lobby; leave Code empty for an open lobby,
 or use exactly four digits. Friends select the lobby, enter its code if needed,
 and choose Join selected. The host chooses Start co-op. Everyone runs their own
 copy, and the host controls the save and mouse menus. Keyboard guests use
 WASD/arrows, Z/Enter to confirm, R to flee, Tab for the map, and E to switch party.
 Native mode assigns one player per computer and handles keyboard P1 automatically.
-This preview needs a configured lobby service; see online/README.md in the project.
+The public lobby service is included in the official patchers. Hosting and
+joining are free and need no router setup or player account.
 """ % VERSION
