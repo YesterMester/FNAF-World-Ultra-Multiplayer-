@@ -83,6 +83,54 @@ def test_game(path):
     frames = parse_frames(g)
     check(g.name == "FNaF World Ultra", "merged game name")
     check(any(o.name == "MP Gamepad" for o in objs), "gamepad object present")
+    online = next((o for o in objs if o.name == "MP Online"), None)
+    if online is not None:
+        for f in frames:
+            first = f.events.groups[0]
+            check(any(a.object_type == online.type and a.object_info == online.index and a.num == 80
+                      for a in first.actions), "online tick precedes game events in %r" % f.name)
+            callbacks = [c for g in f.events.groups for c in g.conditions
+                         if c.object_info == online.index and c.object_type == online.type
+                         and (-81 - c.num) in (18, 19, 20, 23, 24, 26, 27, 28, 29, 30, 31)]
+            check(all(not c.flags & 32 for c in callbacks),
+                  "native callbacks registered as triggered events in %r" % f.name)
+            lines = [g.line for g in f.events.groups if g.conditions and
+                     g.conditions[0].object_info == online.index and g.conditions[0].object_type == online.type]
+            check(all(n > 0 for n in lines) and len(lines) == len(set(lines)),
+                  "online callbacks have distinct event identifiers in %r" % f.name)
+            camera = [a for group in f.events.groups
+                      if any(c.object_type == online.type and c.num == -97 and c.other_flags & 1
+                             for c in group.conditions) for a in group.actions if a.object_type == -3]
+            check([a.num for a in camera] == [8, 9] and all(len(a.params) == 1 and a.params[0].code == 22 for a in camera),
+                  "guest camera uses numeric X/Y scroll actions in %r" % f.name)
+    battle = next(f for f in frames if f.name == "5: Overworld")
+    turn = next(group for group in battle.events.groups if any(
+        a.object_type == -1 and a.num == 14 and a.params and
+        "create button".encode("utf-16-le") in a.params[0].data for a in group.actions))
+    prefix = turn.actions[:6]
+    check(all(a.object_type == -1 and a.num in (3, 27) for a in prefix) and
+          prefix[0].params[1].data.count(evb.t_altval(2, 68, 0)) == 1 and
+          prefix[5].params[1].data.count(evb.t_op("^")) == 1,
+          "turn owner and controller mask assigned before creating attack buttons without a nested loop")
+    ready = struct.unpack_from("<H", prefix[2].params[0].data)[0]
+    confirms = [group for group in battle.events.groups if any(
+        c.object_type >= 32 and c.num == -82 for c in group.conditions) and any(
+        a.object_type == 2 and a.object_info == 305 and a.num == 24 for a in group.actions)]
+    check(len(confirms) == 1 and any(c.object_type == -1 and c.num == -28 and
+          c.params[0].data == evb.p_global(ready).data and c.params[1].data == evb.p_cmp("=", evb.t_long(1)).data
+          for c in confirms[0].conditions), "confirm requires the new turn's button-release latch")
+    if online is not None:
+        clicks = [group for group in battle.events.groups if any(c.object_type >= 32 and c.num == -87 and
+                  any(p.code == 1 and struct.unpack_from("<H", p.data, 2)[0] == 305 for p in c.params)
+                  for c in group.conditions)]
+        check(bool(clicks) and all(any(c.object_type == online.type and c.object_info == online.index and
+              c.num == -113 for c in group.conditions) for group in clicks),
+              "online mouse attack events require the local player to own the turn")
+        f9 = [group for group in battle.events.groups if any(c.object_type == -6 and c.num == -1 and
+              any(p.code == 14 and struct.unpack_from("<H", p.data)[0] == 120 for p in c.params)
+              for c in group.conditions)]
+        check(bool(f9) and all(any(c.object_type == online.type and c.num == -103 and c.other_flags & 1
+              for c in group.conditions) for group in f9), "F9 keyboard reassignment is disabled in native sessions")
     pc = g.chunk(0x2242)
     tc = g.chunk(0x222F)
     stored = struct.unpack("<I", pc.decode(g))[0]

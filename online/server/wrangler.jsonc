@@ -1,0 +1,19 @@
+// Cloudflare Workers configuration for the public lobby relay.
+// Deploy with `npx wrangler deploy` (see online/README.md). It fits the free
+// Workers plan: Durable Objects there require SQLite storage.
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "fwum-relay",
+  "main": "worker.mjs",
+  "compatibility_date": "2026-09-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "durable_objects": {
+    "bindings": [{ "name": "LOBBY", "class_name": "Lobby" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Lobby"] }],
+  "vars": {
+    // New lobbies are refused after this many incoming messages in a UTC day,
+    // so running sessions keep the rest of the free daily allowance.
+    "DAILY_MESSAGE_LIMIT": "1800000"
+  }
+}

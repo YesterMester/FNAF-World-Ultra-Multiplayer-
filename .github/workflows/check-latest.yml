@@ -7,13 +7,20 @@ on:
 
 jobs:
   merge:
-    runs-on: ubuntu-22.04
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x86
+      - name: Build the native extension
+        run: python online/build_native.py
       - name: Download both games from Game Jolt and build the merge
+        shell: bash
         run: python patcher/patch.py --download --downloads "$RUNNER_TEMP/dl" --out "$RUNNER_TEMP/out"
       - name: Re-read the merged game
+        shell: bash
         run: python patcher/selftest.py --game "$RUNNER_TEMP/out/Fnaf World Ultra.dat"

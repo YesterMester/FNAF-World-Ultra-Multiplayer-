@@ -1,0 +1,12 @@
+services:
+  relay:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8787:8787"
+    environment:
+      TRUST_PROXY: "1"
+    read_only: true
+    init: true
+    security_opt:
+      - no-new-privileges:true
