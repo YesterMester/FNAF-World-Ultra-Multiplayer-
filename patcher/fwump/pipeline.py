@@ -7,7 +7,7 @@ from .merge import OVERWORLD, Merger, MergeError
 from .online import add_online, compatibility_id, find_extension, write_settings
 from .launcher import write_launcher
 
-VERSION = "1.1.0"
+VERSION = "1.1.1"
 
 
 def build(ultra_dir, mp_exe, out_dir, log=print, debug=False, test_jump=False, baseline=False,

@@ -619,7 +619,12 @@ class Merger:
                  flag_off(hit, 1)],
                 [a_set_gv(ACT, t_long(1))])
             # not in play: wait (hidden) on top of player 1
-            add([c_gv(ids, ACT, "=", t_long(0))], [act(T(sk), 26, sk), act(T(hk), 4, hk), setpos(hk, hit)])
+            add([c_gv(ids, ACT, "=", t_long(0))], [act(T(sk), 26, sk), act(T(hk), 4, hk),
+                 setpos(hk, hit), act(T(hk), 36, hk, [p_expr(t_long(31))])])
+            # Sessions can start on the title/party screen. Such companions
+            # haven't had an inactive overworld tick to receive a spawn point.
+            add([c_gv(ids, ACT, "=", t_long(1)), flag_off(hk, 31)],
+                [setpos(hk, hit), act(T(hk), 35, hk, [p_expr(t_long(31))])])
             add([c_gv(ids, ACT, "=", t_long(1))], [act(T(sk), 27, sk), set_alt(hk, DX, 0), set_alt(hk, DY, 0)])
             # which way this player wants to go, if it is free (the same test as
             # Ultra's own walker: a few pixels ahead, scenery and solid objects)

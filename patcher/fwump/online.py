@@ -7,9 +7,36 @@ from pathlib import Path
 
 from .evb import Ids, act, a_set_gv, c_compare, clone, cond, expr, group, p_expr, t_ext, t_close, t_long, t_objexp, t_gv
 from .fusion import EXPR_PARAM_CODES, ObjectDef, Param
-from .merge import MergeError
+from .merge import KEYMAP, MergeError
 
 PUBLIC_RELAY = "wss://fwum-relay.famous-cry.workers.dev/lobbies"
+
+
+def gate_keyboard(g, ids, otype, oi):
+    """Keep original keyboard input offline and resolve releases across focus changes."""
+    result, branch = [], []
+
+    def finish():
+        if any(c.object_type == -6 and c.num in (-1, -2) and not c.other_flags & 1 and
+               c.params and c.params[0].code == 14 and
+               struct.unpack_from("<H", c.params[0].data)[0] in KEYMAP for c in branch):
+            branch.append(c_compare(ids, (t_ext(otype, 19, oi), t_close()), "=", (t_long(1),)))
+        result.extend(branch)
+        branch.clear()
+
+    for c in g.conditions:
+        if c.object_type == -1 and c.num in (-24, -25):
+            finish()
+            result.append(c)
+            continue
+        if c.object_type == -6 and c.num == -2 and c.other_flags & 1 and c.params and c.params[0].code == 14:
+            key = struct.unpack_from("<H", c.params[0].data)[0]
+            if key in KEYMAP:
+                c = c_compare(ids, (t_ext(otype, 20, oi), t_long(key), t_close()), "=", (t_long(1),))
+        branch.append(c)
+    finish()
+    g.conditions = result
+
 
 def find_extension():
     roots = [Path(getattr(sys, "_MEIPASS", "")), Path(__file__).resolve().parents[2]]
@@ -116,6 +143,10 @@ def add_online(m, module):
         original_groups = {id(g) for g in f.events.groups}
         used_lines = {g.line for g in f.events.groups}
         audio_events = []
+        def authority_guard():
+            # An extension condition filters Fusion's object selection, which
+            # breaks child events such as Ultra's battlewait cooldown reset.
+            return c_compare(ids, (t_ext(otype, 18, o.index), t_close()), "=", (t_long(1),))
         # Native clients render the host's state. Ultra's own events only run on
         # the authority, so remote players never write the host's save locally.
         for g in list(f.events.groups):
@@ -124,14 +155,15 @@ def add_online(m, module):
                     item.object_type, item.object_info = otype, o.index
                 for parameter in item.params:
                     rewrite_parameter(parameter)
-            if any(c.object_type == -1 and c.num in (-10, -11) for c in g.conditions):
+            if any(c.object_type == -1 and c.num in (-10, -11, -42) for c in g.conditions):
                 continue  # structural group markers must retain their layout
+            gate_keyboard(g, ids, otype, o.index)
             gated = []
             for c in g.conditions:
                 if c.object_type == -1 and c.num in (-24, -25):
-                    gated.append(cond(ids, otype, -81 - 16, o.index))
+                    gated.append(authority_guard())
                 gated.append(c)
-            gated.append(cond(ids, otype, -81 - 16, o.index))
+            gated.append(authority_guard())
             if len(gated) > 255:
                 raise MergeError("too many conditions in an event after adding online mode")
             g.conditions = gated

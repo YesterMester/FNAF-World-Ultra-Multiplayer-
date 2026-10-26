@@ -164,10 +164,17 @@ void release_session() {
     c.reconnecting = c.leaving = c.resume_pending = false;
     c.retry_at = c.reconnect_until = c.resume_at = 0;
 }
+bool game_focused() {
+    const auto game = header() ? header()->rhHMainWin : ctx().game;
+    const auto foreground = GetForegroundWindow();
+    return game && foreground && GetAncestor(game, GA_ROOT) == GetAncestor(foreground, GA_ROOT);
+}
+bool game_input_focused() {
+    return game_focused() && !(ctx().window && IsWindowVisible(ctx().window));
+}
 Pad physical_pad() {
     Pad pad;
-    auto fg = GetForegroundWindow(); auto& c = ctx();
-    if ((c.window && IsWindowVisible(c.window)) || (fg != c.game && !IsChild(c.game, fg))) return pad;
+    if (!game_input_focused()) return pad;
     static auto get = [] {
         for (auto dll : {L"xinput1_4.dll", L"xinput1_3.dll", L"xinput9_1_0.dll"}) {
             auto module = LoadLibraryW(dll);
@@ -770,6 +777,14 @@ template<int N> long WINAPI expression(LPHO ho, long param) {
     }
     if constexpr (N == 16) return c.entity ? 255 - int(c.entity->effect_param >> 24) : 0;
     if constexpr (N == 17) return c.entity ? long(c.entity->effect_param & 0xffffff) : 0xffffff;
+    if constexpr (N == 18) return !(c.joined && !c.hosting) && !c.exit_session;
+    // Use expressions for guards so Fusion keeps the parent's object selection
+    // when evaluating child events. Input belongs to the focused network slot.
+    if constexpr (N == 19) return !c.playing && game_input_focused();
+    if constexpr (N == 20) {
+        const auto key = CNC_GetFirstExpressionParameter(reinterpret_cast<Data*>(ho), param, TYPE_INT);
+        return c.playing || !game_input_focused() || !(GetAsyncKeyState(int(key)) & 0x8000);
+    }
     return 0;
 }
 short WINAPI begin(LPHO ho, long frame, long) {
@@ -890,7 +905,7 @@ CondFn conditions[] = {condition<0>, condition<1>, condition<2>, condition<3>, c
     condition<7>, condition<8>, condition<9>, condition<10>, condition<11>, condition<12>, condition<13>, condition<14>,
     condition<15>, condition<16>, condition<17>, condition<18>, condition<19>, condition<20>, condition<21>, condition<22>, condition<23>, condition<24>, condition<25>, condition<26>, condition<27>, condition<28>, condition<29>, condition<30>, condition<31>, condition<32>};
 ActFn actions[] = {begin, finish, created, clear_exit, report_audio, report_counter, report_shader, report_shader_param, report_colour};
-ExpFn expressions[] = {expression<0>, expression<1>, expression<2>, expression<3>, expression<4>, expression<5>, expression<6>, expression<7>, expression<8>, expression<9>, expression<10>, expression<11>, expression<12>, expression<13>, expression<14>, expression<15>, expression<16>, expression<17>};
+ExpFn expressions[] = {expression<0>, expression<1>, expression<2>, expression<3>, expression<4>, expression<5>, expression<6>, expression<7>, expression<8>, expression<9>, expression<10>, expression<11>, expression<12>, expression<13>, expression<14>, expression<15>, expression<16>, expression<17>, expression<18>, expression<19>, expression<20>};
 }
 extern "C" {
 BOOL WINAPI DllMain(HINSTANCE h, DWORD reason, LPVOID) { if (reason == DLL_PROCESS_ATTACH) instance = h; return TRUE; }
@@ -946,7 +961,7 @@ short WINAPI HandleRunObject(Data* d) {
         SetWindowPos(c.badge, nullptr, p.x, p.y, 0, 0, SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOZORDER);
     }
     const bool down = (GetAsyncKeyState(VK_F10) & 0x8000) &&
-        (GetForegroundWindow() == c.game || GetForegroundWindow() == c.window);
+        (game_focused() || GetForegroundWindow() == c.window || IsChild(c.window, GetForegroundWindow()));
     if (down && !c.key_down) {
         if (c.window && IsWindowVisible(c.window)) ShowWindow(c.window, SW_HIDE); else menu();
     }
@@ -961,7 +976,7 @@ short WINAPI ContinueRunObject(Data*) { return 0; }
 short WINAPI GetRunObjectInfos(mv*, fpKpxRunInfos info) {
     memset(info, 0, sizeof(*info)); info->conditions = reinterpret_cast<EXTCONDROUTINE*>(conditions);
     info->actions = reinterpret_cast<EXTACTROUTINE*>(actions); info->expressions = reinterpret_cast<EXTEXPROUTINE*>(expressions);
-    info->numOfConditions = 33; info->numOfActions = 9; info->numOfExpressions = 18;
+    info->numOfConditions = 33; info->numOfActions = 9; info->numOfExpressions = 21;
     info->editFlags = OEFLAG_NEVERSLEEP | OEFLAG_NEVERKILL; info->identifier = 0x4e4d5746; return TRUE;
 }
 }
