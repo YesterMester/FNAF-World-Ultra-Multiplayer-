@@ -105,7 +105,7 @@ jobs:
         with:
           tag_name: latest
           target_commitish: ${{ github.sha }}
-          name: FNaF World Ultra Multiplayer v1.1.0 — Native online co-op
+          name: FNaF World Ultra Multiplayer v1.1.1 — Keyboard focus and encounters
           body_path: release-notes.md
           make_latest: true
           fail_on_unmatched_files: true

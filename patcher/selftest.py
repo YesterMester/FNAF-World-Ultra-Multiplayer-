@@ -15,6 +15,7 @@ from fwump import evb  # noqa: E402
 from fwump.ccn import Decrypter, Game, read_chunks  # noqa: E402
 from fwump.checksum import make_checksum, make_pame_checksum  # noqa: E402
 from fwump.fusion import Events, pack_chunk, parse_frames, parse_objects  # noqa: E402
+from fwump.online import gate_keyboard  # noqa: E402
 
 
 class FakeGame:
@@ -77,6 +78,34 @@ def test_events():
           "constant vs expression global actions")
 
 
+def test_keyboard_focus():
+    class F:
+        pass
+    frame = F()
+    frame.events = F()
+    frame.events.groups = []
+    ids = evb.Ids(frame)
+    key = lambda vk, negate=False: evb.cond(ids, -6, -2, params=[
+        evb.Param(14, struct.pack("<HH", vk, 0))], other=int(negate))
+    keyboard, release = key(87), key(68, True)
+    pad = evb.cond(ids, 50, -93, 700, [evb.p_expr(evb.t_long(1))])
+    escape = evb.cond(ids, -6, -1, params=[evb.Param(14, struct.pack("<HH", 27, 0))])
+    event = evb.group([keyboard, release, evb.cond(ids, -1, -25), pad,
+                       key(68, True), evb.cond(ids, -1, -25), escape], [])
+    gate_keyboard(event, ids, 50, 700)
+    from fwump.merge import Merger
+    branches, _ = Merger.branches(event)
+    parts = [[event.conditions[i] for i in b] for b in branches]
+    check(any(c.object_type == -1 and c.num == -3 and evb.t_ext(50, 19, 700) in c.params[0].data for c in parts[0]) and
+          all(not any(evb.t_ext(50, 19, 700) in p.data for p in c.params) for b in parts[1:] for c in b),
+          "only mapped legacy keyboard branches require offline focused input")
+    check(all(any(c.object_type == -1 and c.num == -3 and
+              c.params[0].data == evb.p_expr(evb.t_ext(50, 20, 700), evb.t_long(68), evb.t_close()).data for c in b) for b in parts[:2]),
+          "keyboard and pad branches both resolve key releases after changing focus")
+    check(parts[0][0] is keyboard and parts[1][0] is pad and parts[2] == [escape],
+          "native pad input and original menu keys retain their branches")
+
+
 def test_game(path):
     g = Game(path)
     objs = parse_objects(g)
@@ -86,6 +115,10 @@ def test_game(path):
     online = next((o for o in objs if o.name == "MP Online"), None)
     if online is not None:
         for f in frames:
+            markers = [group for group in f.events.groups if any(
+                c.object_type == -1 and c.num == -42 for c in group.conditions)]
+            check(all(len(group.conditions) == 1 for group in markers),
+                  "child event boundaries retain their structural layout in %r" % f.name)
             first = f.events.groups[0]
             check(any(a.object_type == online.type and a.object_info == online.index and a.num == 80
                       for a in first.actions), "online tick precedes game events in %r" % f.name)
@@ -104,6 +137,14 @@ def test_game(path):
             check([a.num for a in camera] == [8, 9] and all(len(a.params) == 1 and a.params[0].code == 22 for a in camera),
                   "guest camera uses numeric X/Y scroll actions in %r" % f.name)
     battle = next(f for f in frames if f.name == "5: Overworld")
+    if online is not None:
+        wait = next(group for group in battle.events.groups if any(
+            c.object_type == -1 and c.num == -16 and c.params and
+            "battlewait".encode("utf-16-le") in c.params[0].data for c in group.conditions))
+        check(any(c.object_type == -1 and c.num == -3 and
+              evb.t_ext(online.type, 18, online.index) in c.params[0].data for c in wait.conditions) and
+              not any(c.object_type == online.type and c.num == -97 for c in wait.conditions),
+              "encounter loop authority guard preserves Fusion object selection")
     turn = next(group for group in battle.events.groups if any(
         a.object_type == -1 and a.num == 14 and a.params and
         "create button".encode("utf-16-le") in a.params[0].data for a in group.actions))
@@ -146,6 +187,7 @@ def main():
     test_checksum()
     test_chunks()
     test_events()
+    test_keyboard_focus()
     if a.game:
         test_game(a.game)
     print("all good")

@@ -9,7 +9,9 @@ Run the patcher, choose where to build the game, then open the built game. On St
 
 Press **F10 → Host game → Start co-op**. Friends select your lobby and join. Leave Code empty for an open lobby or enter exactly four digits. Everyone should build with the same patcher release.
 
-Version 1.1.0 includes the battle turn, confirm-input and character/attack graphics fixes. The existing save in your output game folder is preserved when rebuilding there. The public lobby service is included and has free-plan daily capacity limits.
+Version 1.1.1 fixes the encounter cooldown reset and keyboard input when switching between game windows. It also includes the previous battle turn, confirm-input and character/attack graphics fixes. Rebuild each player's game with this release; the existing save in the output game folder is preserved. The public lobby service is included and has free-plan daily capacity limits.
+
+For a two-window test, host in one copy, join from the other, then start co-op. Keyboard input controls the player assigned to the focused copy; the second player has a blue overworld walker.
 
 The patcher downloads the tested FNaF World Ultra 3.0.9 (in-game title 3.1.0) and Local Multiplayer 0.0.4, or uses your existing copies. Game files are built on each player's computer.
 
