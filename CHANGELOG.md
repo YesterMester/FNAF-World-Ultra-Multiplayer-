@@ -4,6 +4,7 @@
 
 - Restore Ultra's original encounter cooldown by preserving object selection in nested game events.
 - Route online keyboard input through each copy's assigned player, and clear held movement when changing focus.
+- Spawn companions beside player one when co-op starts before entering the overworld.
 - Preserve child event boundary markers and the original offline menu keys.
 
 ## 1.1.0 — 2026-10-25
