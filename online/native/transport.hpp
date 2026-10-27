@@ -1,6 +1,9 @@
 #pragma once
 #include <windows.h>
 #include <winhttp.h>
+#ifndef WINHTTP_OPTION_WEB_SOCKET_KEEPALIVE_INTERVAL
+#define WINHTTP_OPTION_WEB_SOCKET_KEEPALIVE_INTERVAL 116
+#endif
 #include <atomic>
 #include <condition_variable>
 #include <deque>
@@ -98,6 +101,10 @@ class Connection : public std::enable_shared_from_this<Connection> {
             }
             auto ws = WinHttpWebSocketCompleteUpgrade(request, 0);
             if (!ws) throw std::runtime_error("The online service refused the connection.");
+            // Wine's synchronous WebSocket receive loop sends an unlocked pong
+            // when its 30s keepalive timer expires, racing active snapshot sends.
+            DWORD keepalive = 0x7fffffff;
+            WinHttpSetOption(ws, WINHTTP_OPTION_WEB_SOCKET_KEEPALIVE_INTERVAL, &keepalive, sizeof keepalive);
             socket = ws;
             if (stopped) { stop(); throw std::runtime_error("Connection cancelled."); }
             auto text = hello.dump();

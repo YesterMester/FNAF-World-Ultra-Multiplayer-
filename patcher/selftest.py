@@ -208,6 +208,18 @@ def test_game(path):
         check(bool(f9) and all(any(c.object_type == online.type and c.num == -103 and c.other_flags & 1
               for c in group.conditions) for group in f9), "F9 keyboard reassignment is disabled in native sessions")
     pc = g.chunk(0x2242)
+    from fwump.merge import Merger
+    for line in (259, 270):
+        interaction = next(group for group in battle.events.groups if group.line == line)
+        branches, _ = Merger.branches(interaction)
+        check(len(branches) == 4 and all(
+            any(interaction.conditions[i].object_type == 2 and interaction.conditions[i].num == -4 for i in b) and
+            next(i for i in b if interaction.conditions[i].object_type == 2 and interaction.conditions[i].num == -4) <
+            next(i for i in b if interaction.conditions[i].object_type == 2 and interaction.conditions[i].num in (-24, -25))
+            for b in branches) and all(
+            interaction.conditions[b[0]].object_type == -1 and interaction.conditions[b[0]].num == -28
+            for b in branches[1:]),
+            "overworld interaction line %d filters by overlapping player before target flags" % line)
     tc = g.chunk(0x222F)
     stored = struct.unpack("<I", pc.decode(g))[0]
     check(stored == make_pame_checksum(bytes(g.data[tc.offset:pc.offset])), "protection checksum valid")

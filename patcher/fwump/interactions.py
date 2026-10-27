@@ -27,6 +27,11 @@ def add_interactions(m):
             if len(hits) != 1:
                 raise RuntimeError("Ambiguous exploration interaction in %r event %d" % (f.name, g.line))
             index = hits[0]
+            if index:
+                # Keep the player overlap ahead of target flag/value filters so
+                # inactive or non-overlapping OR branches never select targets.
+                g.conditions.insert(0, g.conditions.pop(index))
+                index = 0
             source = g.conditions[index]
             for player, companion in zip((2, 3, 4), companions):
                 alternative = clone(source)
