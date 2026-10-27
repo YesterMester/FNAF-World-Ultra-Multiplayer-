@@ -293,10 +293,13 @@
   embedded native hash is a comment, rather than a checksum for an absent asset.
 - These fixes require fresh matching patchers and renewed live qualification.
   The earlier candidate is not installed or published.
-- Exact-build clock puzzle 4 testing exposed a shared contact-latch bug. A guest
-  entered a button while P1 stood elsewhere; the original named-loop callback
-  immediately reset that guest's pressed direction. The loop now runs once
-  when any participant moves, and releases a target only when all four hitboxes
-  are outside it. Inactive companions follow P1, retaining single-player behavior.
-  Guest copies still use the original puzzle interaction child tree. This event
-  correction leaves native inputs and the native module unchanged.
+- Clock puzzle 4 now uses one shared named interaction loop, with reset checks
+  covering every participant. Its original choice and result logic is retained.
+  The first private test incorrectly assumed the puzzle sets a pressed animation;
+  source inspection corrected that assumption. The corrected real-client check
+  passed a guest choosing the correct button, shared return and one clock reward.
+- Four real clients passed duplicate NPC lineups with 185-pixel visible heights
+  on the current MSVC module. A world capture then exposed inherited HUD flags
+  on name tags: the guest's camera kept the host tag near screen center. World
+  labels now clear scrolling-independence so their coordinates follow their
+  actors; NPC labels and the actual HUD retain their existing behavior.

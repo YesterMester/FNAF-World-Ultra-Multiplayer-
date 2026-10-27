@@ -65,6 +65,13 @@ def add_identity(m):
             oi = clone_active(m, f, m.oi("plr character"), "MP first character P%d" % player, -400, -400)
             actors.append(oi)
             label = clone_text(m, f, "MP player label P%d" % player, -400, -400, 100 if not world else 55, 18)
+            if world:
+                props = bytearray(m.objs[label].props)
+                # The source String is HUD-fixed. World name tags must scroll
+                # with their actors on every client's independent camera.
+                flags = struct.unpack_from("<I", props, 16)[0]
+                struct.pack_into("<I", props, 16, flags & ~0x0800)
+                m.objs[label].props = bytes(props)
             npc = "spr fredbear" if frame_index == 19 else "spr animdude" if frame_index == 18 else "spr creator"
             layer = next(i.layer for i in f.instances if i.object_info == (hit if world else m.oi(npc, f)))
             for item in f.instances:
