@@ -1713,9 +1713,9 @@ void party_online_tick() {
     }
     if (p.catalog.empty()) return;
     const auto& icons = p.catalog.at("icons"); const auto& headings = p.catalog.at("headings");
-    auto unlocked = [&](int character) {
-        return character > 0 && std::any_of(icons.begin(), icons.end(), [&](const auto& item) {
-            return item[1].template get<int>() == character && item[6].template get<bool>();
+    auto unlocked = [&icons](int character) {
+        return character > 0 && std::any_of(icons.begin(), icons.end(), [character](const Json& item) {
+            return item[1].get<int>() == character && item[6].get<bool>();
         });
     };
     auto owner = [&](int row) { return ((row - 1) % 4) % std::max(1, c.players); };
@@ -1774,7 +1774,8 @@ void party_online_tick() {
         pages.push_back({start, end, category}); start = end;
     }
     auto follow = [&] {
-        auto at = std::find_if(icons.begin(), icons.end(), [&](const auto& icon) { return icon[1].template get<int>() == p.characters[p.slot - 1]; });
+        const int character = p.characters[p.slot - 1];
+        auto at = std::find_if(icons.begin(), icons.end(), [character](const Json& icon) { return icon[1].get<int>() == character; });
         if (at != icons.end()) p.cursor = int(at - icons.begin());
     };
     if (p.previous_slot != p.slot) { follow(); p.previous_slot = p.slot; p.repeating = 0; }
@@ -1815,7 +1816,8 @@ void party_online_tick() {
     if (page_delta) { p.page = std::clamp(p.page + page_delta, 0, int(pages.size()) - 1); p.cursor = pages[p.page].begin; }
     int character = (pressed & XINPUT_GAMEPAD_A) ? icons[p.cursor][1].get<int>() : 0;
     if (click && target && target->hoOi == c.ui.icon) {
-        auto at = std::find_if(icons.begin(), icons.end(), [&](const auto& icon) { return icon[0].template get<int>() == target->hoHFII; });
+        const int instance = target->hoHFII;
+        auto at = std::find_if(icons.begin(), icons.end(), [instance](const Json& icon) { return icon[0].get<int>() == instance; });
         if (at != icons.end()) { p.cursor = int(at - icons.begin()); character = (*at)[1]; }
     }
     if (character) submit("pick", character);
@@ -1873,7 +1875,8 @@ void party_online_tick() {
             L"P" + std::to_wstring(owner(row) + 1) + L"  Slot " + std::to_wstring((row - 1) % 4 + 1) + L"\n" + name(p.characters[row - 1]),
             row == p.slot ? 0x5ad4ff : owner(row) == player ? 0xffffff : 0xb0b0b0);
         auto portrait = find(p.view.at("portraits")[row - 1]);
-        auto icon = std::find_if(icons.begin(), icons.end(), [&](const auto& item) { return item[1].template get<int>() == p.characters[row - 1]; });
+        const int character = p.characters[row - 1];
+        auto icon = std::find_if(icons.begin(), icons.end(), [character](const Json& item) { return item[1].get<int>() == character; });
         if (portrait && icon != icons.end()) { party_image(portrait, (*icon)[2], 634, 44 + (row - 1) % 4 * 35 + (row > 4 ? 168 : 0), .42f, .42f); party_filter(portrait); }
         else if (portrait) party_visible(portrait, false);
         const int y = 42 + (row - 1) % 4 * 35 + (row > 4 ? 168 : 0);
