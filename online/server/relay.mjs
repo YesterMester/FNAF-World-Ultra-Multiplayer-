@@ -46,7 +46,7 @@ export function createLobby({ now = Date.now, secret = randomHex(32), graceMs = 
   }
   function publish() { for (const p of peers) if (p.build && !p.room) browse(p); }
   function members(room) {
-    const list = room.members.map((m, slot) => ({ slot, name: m.name, ...(m.away ? { away: true } : {}) }));
+    const list = room.members.map((m, slot) => ({ id: m.member, slot, name: m.name, ...(m.away ? { away: true } : {}) }));
     room.members.forEach((p, slot) => {
       p.slot = slot; save(p);
       send(p, { type: 'members', room: listing(room), slot, members: list });
@@ -204,8 +204,40 @@ export function createLobby({ now = Date.now, secret = randomHex(32), graceMs = 
         for (const [key, min, max] of [['buttons', 0, 65535], ['lx', -32768, 32767], ['ly', -32768, 32767]]) {
           if (!Number.isInteger(msg[key]) || msg[key] < min || msg[key] > max) throw fail('input', 'Invalid controller state.');
         }
+        if ((msg.frame !== undefined && (!Number.isInteger(msg.frame) || msg.frame < 0 || msg.frame > 255)) ||
+            (msg.epoch !== undefined && (!Number.isInteger(msg.epoch) || msg.epoch < 0 || msg.epoch > 0x7fffffff))) {
+          throw fail('input', 'Invalid input scene.');
+        }
         send(p.room.members[0], { type: 'input', slot: p.slot,
-          buttons: msg.buttons, lx: msg.lx, ly: msg.ly }); break;
+          buttons: msg.buttons, lx: msg.lx, ly: msg.ly,
+          ...(msg.frame === undefined ? {} : { frame: msg.frame }),
+          ...(msg.epoch === undefined ? {} : { epoch: msg.epoch }) }); break;
+      }
+      case 'party-edit': {
+        if (!p.room?.playing || p.room.members[0] === p) throw fail('input', 'Join a running session first.');
+        if (msg.version !== 1 || !['pick', 'reset', 'skin'].includes(msg.command) ||
+            !Number.isInteger(msg.seq) || msg.seq < 1 || msg.seq > 0x7fffffff ||
+            !Number.isInteger(msg.epoch) || msg.epoch < 1 || msg.epoch > 0x7fffffff ||
+            !Number.isInteger(msg.revision) || msg.revision < 0 || msg.revision > 0x7fffffff ||
+            !Number.isInteger(msg.row) || msg.row < 1 || msg.row > 8 ||
+            !Number.isInteger(msg.character) || msg.character < 0 || msg.character > 4096) {
+          throw fail('party', 'Invalid party selection.');
+        }
+        if (msg.seq <= (p.partySequence || 0)) throw fail('party', 'That selection has already been received.');
+        p.partySequence = msg.seq;
+        send(p.room.members[0], { type: 'party-edit', version: 1, member: p.member, slot: p.slot,
+          seq: msg.seq, epoch: msg.epoch, revision: msg.revision, command: msg.command,
+          row: msg.row, character: msg.character });
+        break;
+      }
+      case 'party-result': {
+        if (!p.room?.playing || p.room.members[0] !== p) throw fail('host_only', 'Only the host confirms party changes.');
+        if (!Number.isInteger(msg.seq) || msg.seq < 1 || typeof msg.accepted !== 'boolean' ||
+            typeof msg.message !== 'string' || msg.message.length > 160) throw fail('party', 'Invalid party confirmation.');
+        const recipient = p.room.members.find(m => m.member === msg.member);
+        if (recipient && recipient !== p) send(recipient, { type: 'party-result', seq: msg.seq,
+          accepted: msg.accepted, message: msg.message });
+        break;
       }
       case 'audio': {
         if (!p.room?.playing || p.room.members[0] !== p) throw fail('host_only', 'Only the host sends game audio events.');

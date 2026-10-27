@@ -12,7 +12,8 @@ empty for an open game, or protect it with exactly **four digits**.
 [Steam Deck / Linux](https://github.com/YesterMester/FNAF-World-Ultra-Multiplayer-/releases/latest/download/FWUM-Patcher-Linux-SteamDeck)
 
 The free public lobby service is included in the official patchers. Each player
-runs their own copy of the game; the host owns the save and operates mouse menus.
+runs their own copy of the game; the host owns the shared simulation and save.
+Each online player has an independent exploration camera and party cursor.
 See [online details and testing](online/README.md).
 
 This repository holds a **patcher**, not the games. The patcher downloads both mods from
@@ -32,45 +33,72 @@ on your computer.
   late joining and automatic recovery after brief connection interruptions.
   Each computer contributes one player; no router configuration or player account is needed.
 
-* **Controller support** (Xbox-style / XInput, up to 4 at once) everywhere Ultra has keyboard
-  controls: walking around, the map, running from battles, dialogue, and the minigames.
-  The mouse, touch and keyboard controls keep working as before.
-* **Co-op battles.** Every attack turn belongs to a player. When it is your character's turn,
-  pick the attack on *your* controller. The attack list highlights your choice and the line at
-  the bottom shows whose turn it is (`P2: ...`). Release A before confirming a new turn.
-* Turns are shared out over however many controllers are plugged in:
-  * 1 controller: you play every turn
-  * 2 controllers: P1 plays party slots 1 and 3, P2 plays slots 2 and 4
-  * 3 controllers: P1 plays slots 1 and 4, P2 slot 2, P3 slot 3
-  * 4 controllers: one slot each (like the Local Multiplayer mod)
+* **A shared party with owned slots.** Four active characters have four paired
+  reserves. Duplicate characters are allowed. Ultra's full categorized roster,
+  locked portraits and permanent slot outlines stay visible. Online players
+  browse independently and edit only their own entries.
+* **Individual battle turns and switching.** Only the acting character's owner
+  selects its attack or swaps it with its paired reserve. Other slots keep their
+  current character, health and cooldown. Disconnected battle turns pass to the
+  host after the reconnect grace period.
 
-  This applies to both rows of your party, the same way the Local Multiplayer mod did it.
-  Controllers can join or leave mid-game; the turns rebalance automatically.
-* **Everyone walks** (new in this merge). In the overworld, players 2 to 4 each get their
-  own Freddy to walk around with, tinted so you can tell them apart: player 2 dark blue-grey,
-  player 3 golden, player 4 red. Player 1's Freddy is the real one: it's the one that talks
-  to characters, opens chests and runs into battles. The others walk at the same speed,
-  can't pass walls or barriers, get pulled along when player 1 walks off, and wait out of
-  sight during battles.
-* **F9** (while exploring) makes the **keyboard/mouse player Player 1** and turns the
-  controllers into Players 2 to 4. Press it again to switch back. A sparkle sound means
-  keyboard = P1, a "tink" means controllers only. This is for a host who plays with mouse and
-  keyboard while friends use local controllers. Native online mode assigns P1 automatically.
+| Players | P1 controls | P2 controls | P3 controls | P4 controls |
+|---|---|---|---|---|
+| 1 | 1, 2, 3, 4 | — | — | — |
+| 2 | 1, 3 | 2, 4 | — | — |
+| 3 | 1, 4 | 2 | 3 | — |
+| 4 | 1 | 2 | 3 | 4 |
+
+Each entry includes the same-numbered reserve. Ownership stays fixed during an
+online battle; a late join enters the next encounter.
+
+* **Selected-character avatars and NPC groups.** Each player's lowest active
+  slot supplies their exploration appearance. All current players stand beside
+  one another in Fredbear, Animdude and creator conversations, including duplicate
+  picks. Supported skins are optional cosmetics and never change battle stats.
+  Characters without dedicated walking art use their own existing idle pose.
+* **Exploration together.** Players have separate walkers and online cameras
+  within the current area. Eligible chests, NPCs and exits accept guest
+  interactions. Battles, travel and story scenes move the group together.
+  Local controllers share a camera and stay within its range.
+* **Controller menus.** D-pad moves focus; A selects; B returns. Start opens the
+  exploration toolbar. The native lobby also supports D-pad/A/B and editing a
+  four-digit code, including leading zeros.
+* **Cooperative minigames.** Fishing has personal hooks; Foxy Fighters has
+  personal ships, fire and health; FNaF 57 has personal movement, jumps, weapons
+  and health; Foxy.exe has personal movement/lives and shared trial advances;
+  Rainbow has personal runners, jumps, deaths and checkpoint respawns. Clock
+  rooms share puzzle progress and allow every participant to interact.
+  Mediocore Night uses a shared office/cameras/tasks, with B to leave; a co-op
+  round returns at 6 AM. Ultra's HTU screen remains a shared tutorial.
 
 ### Controls
 
-| Controller | Does |
-|---|---|
-| Left stick / D-pad | walk (each player their own Freddy), move in minigames, move the attack highlight in battle |
-| **A** | confirm, pick the highlighted attack, jump (minigames) |
-| **B** (hold) | run away from a battle (same as holding **R**) |
-| **X** | fire (minigames) |
-| **Back / View** (hold) | show the map (same as holding **Tab**) |
-| **RB** | switch party in battle |
+| Controller | Keyboard | Does |
+|---|---|---|
+| Left stick / D-pad | WASD / arrows | Move, focus menu buttons, highlight an attack |
+| A | Z / Enter / Space | Select, confirm, jump; drop a fishing hook |
+| B | R | Back; hold to flee a battle; next owned slot in the party editor |
+| X | X / Shift | Fire; reset your own slots in the party editor |
+| Y | C in the party editor | Cycle an unlocked supported skin |
+| LB / RB | Q / E in the party editor | Previous / next roster category |
+| RB in battle | E | Swap only the acting slot with its paired reserve |
+| Start | — | Open the world toolbar; P1 starts a valid party |
+| Back / View | Tab | Map while held; P1 leaves the party editor |
 
-Menus (main menu, party, chips, bytes, shops, options) are still mouse/touch. On Steam Deck,
-tap the touchscreen or use the right trackpad as a mouse. In native online mode,
-the host operates these menus for the shared game.
+In Options, A enters slider editing; Left/Right adjusts; A/B finishes editing.
+Release confirm before a new turn or scene. Online play uses one player per
+computer. Outside online play, F9 assigns keyboard/mouse to P1 and controllers
+to the remaining local players; pressing F9 again restores controller-only play.
+
+Party roster browsing and online cameras are personal. Travel, story, shops,
+loadout and Options are shared screens; the host controls save/file/settings
+changes. Guests keep their own game saves. Cosmetic preferences are stored
+separately in `FWUM-skins.ini`.
+
+[Release qualification and test coverage](qa/README.md) records the exact
+patcher hashes, two/four-client Proton checks, simulated-controller coverage
+and validation limits.
 
 ---
 
@@ -130,7 +158,7 @@ downloadable patcher.
    You can join before starting or while the host is already playing.
 5. The host starts a new game or continues a save. Guests use their own controller
    or **WASD/arrows**, **Z/Enter** to confirm, **R** to flee, **Tab** for the map,
-   and **E** to switch parties. Follow the `P#:` prompt for battle turns.
+   and **E** to switch their acting slot with its reserve. Follow the `P#:` prompt for battle turns.
 6. **F10 → Leave session** leaves the game. Guests return to their own title screen;
    the host's progress stays on the host's computer.
 
@@ -138,8 +166,6 @@ The shared Cloudflare relay is free and keeps lobby sockets connected while idle
 Free hosting has daily capacity limits and no guarantee of zero downtime. Service
 configuration and hosting details are in [online/README.md](online/README.md).
 
-For streaming an existing local session, Parsec or Sunshine/Moonlight can still
-provide remote controllers; the native lobby mode uses a separate game copy on each computer.
 
 ---
 

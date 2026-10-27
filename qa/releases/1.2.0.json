@@ -1,0 +1,44 @@
+{
+  "schema": 1,
+  "status": "passed",
+  "version": "1.2.0",
+  "qualified_on": "2026-10-27",
+  "source_commit": "c4649affbb2a93968051d3841ea3aea22a4322e1",
+  "run_id": 40465128131,
+  "artifacts": {
+    "FWUMOnline.mfx": "7e3501f5bd5774922e9a2fa8d16ab6c722a6785e23f3191ef969d512bf406d02",
+    "FWUM-Patcher-Windows.exe": "1d3e72db0ef121288fc11c9a6b502c1e24e53042a0e9bb20a45744c14bfb4d37",
+    "FWUM-Patcher-Linux-SteamDeck": "729cfe3226630cbcd4bb433d5266fee4de46a37fe337394341854d6e50f5035e"
+  },
+  "game_sha256": "4217cb53736c6c0cb2b9997d9ba7765aed6e8052d2df8c90f986901738b55928",
+  "compatibility_id": "6ac9245d0f9517cb41b575609a85e3a6594e6ca772a4a9446375b754635dba5d",
+  "checks": {
+    "embedded_native_matches": true,
+    "party_and_ownership": true,
+    "battle_and_reserves": true,
+    "independent_cameras": true,
+    "npc_lineups": true,
+    "controller_menus": true,
+    "minigames": true,
+    "saved_progress_preserved": true,
+    "paired_release_artifact": true,
+    "public_relay": true,
+    "connection_recovery": true,
+    "office_six_am": true,
+    "installed_smoke": true,
+    "package_audit": true,
+    "mixed_session": true
+  },
+  "evidence": "qa/releases/1.2.0-evidence.json",
+  "coverage": "qa/README.md",
+  "platform": "Steam Deck Linux, Windows executables under Proton 11",
+  "controller_input": "Two simulated XInput controllers; no simulation files installed or packaged",
+  "limits": [
+    "Physical Windows hardware and physical controllers were not qualified.",
+    "Minigame outcome scenarios use explicit boundary fixtures, not full manual course playthroughs.",
+    "Combat checks sample attacks and do not exhaust all character/status combinations.",
+    "Original shared shops/loadout/endings are retained; every purchase and ending was not played through.",
+    "Four concurrent processes share one Deck and are not a four-machine performance benchmark.",
+    "Public free relay is subject to provider capacity limits and outages."
+  ]
+}

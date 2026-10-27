@@ -1,0 +1,27 @@
+name: Publish qualified patchers
+
+on:
+  workflow_dispatch:
+    inputs:
+      qualification:
+        description: Committed qualification manifest under qa/releases/
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Verify and publish the exact artifacts that passed qualification
+        env:
+          GH_TOKEN: ${{ github.token }}
+          QUALIFICATION_MANIFEST: ${{ inputs.qualification }}
+        run: python tools/promote_release.py --publish

@@ -31,6 +31,10 @@ def t_long(v):
     return struct.pack("<hhHi", -1, 0, 10, int(v))
 
 
+def t_double(v):
+    return struct.pack("<hhHdf", -1, 23, 18, float(v), float(v))
+
+
 def t_str(s):
     data = s.encode("utf-16-le") + b"\0\0"
     return struct.pack("<hhH", -1, 3, 6 + len(data)) + data

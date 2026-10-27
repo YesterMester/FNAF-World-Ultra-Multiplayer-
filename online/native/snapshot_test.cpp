@@ -4,6 +4,7 @@
 #include <iostream>
 int main() {
     fwum::Snapshot s; s.frame = 4; s.sequence = 52; s.camera_x = 700;
+    s.epoch = 17;
     s.layers.push_back({100, 200, 16});
     fwum::Entity freddy; freddy.id = 123; freddy.oi = 317; freddy.x = 800; freddy.y = 250;
     freddy.image = 901; freddy.scale_x = .75f; freddy.value = 9.5; freddy.text = u"P2: Freddy \u2605";
@@ -13,12 +14,14 @@ int main() {
     freddy.hotspot_x = 375; freddy.hotspot_y = 225; freddy.display_width = 800; freddy.display_height = 480;
     s.entities.push_back(freddy);
     s.music.push_back({48, 32771, 75, true});
+    s.party = R"({"epoch":12,"characters":[1,1,3,4,5,6,7,8],"versions":[2,3,0,0,0,0,0,0]})";
     auto data = fwum::encode(s); auto result = fwum::decode(data);
     auto old_format = data; old_format[1] = 5;
     bool old_rejected = false;
     try { fwum::decode(old_format); } catch (const std::runtime_error&) { old_rejected = true; }
     assert(old_rejected);
     assert(result.frame == 4 && result.sequence == 52 && result.camera_x == 700);
+    assert(result.party == s.party && result.epoch == 17);
     assert(result.entities[0].image == 901 && result.entities[0].value == 9.5 && result.entities[0].text == freddy.text);
     assert(result.layers[0].x == 100 && result.layers[0].flags == 16);
     assert(result.entities[0].z == 42 && result.entities[0].sprite_layer == 3);

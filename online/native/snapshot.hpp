@@ -38,6 +38,9 @@ struct Snapshot {
     std::vector<Entity> entities;
     struct Music { uint8_t channel = 1; uint16_t callback = 32768; int16_t volume = -1; bool paused = false; };
     std::vector<Music> music;
+    // Host-owned menu data. Cursor, focus and page stay local to each client.
+    std::string party;
+    uint32_t epoch = 0;
 };
 struct Writer {
     std::vector<uint8_t> data;
@@ -60,7 +63,7 @@ struct Reader {
 inline std::vector<uint8_t> encode(const Snapshot& s) {
     if (s.entities.size() > 4096) throw std::runtime_error("Too many visible objects.");
     Writer w;
-    w.put<uint8_t>(0x53); w.put<uint8_t>(6); w.put<uint16_t>(s.frame); w.put<uint32_t>(s.sequence);
+    w.put<uint8_t>(0x53); w.put<uint8_t>(8); w.put<uint16_t>(s.frame); w.put<uint32_t>(s.sequence);
     w.put<int32_t>(s.camera_x); w.put<int32_t>(s.camera_y);
     w.put<uint16_t>(s.width); w.put<uint16_t>(s.height); w.put<uint32_t>(s.background);
     if (s.layers.size() > 128) throw std::runtime_error("Too many world layers.");
@@ -92,12 +95,16 @@ inline std::vector<uint8_t> encode(const Snapshot& s) {
         w.put<uint8_t>(m.channel); w.put<uint16_t>(m.callback);
         w.put<int16_t>(m.volume); w.put<uint8_t>(m.paused ? 1 : 0);
     }
+    w.put<uint32_t>(s.epoch);
+    if (s.party.size() > 65536) throw std::runtime_error("Party data is too large.");
+    w.put<uint32_t>(s.party.size());
+    for (const auto byte : s.party) w.put<uint8_t>(uint8_t(byte));
     return std::move(w.data);
 }
 inline Snapshot decode(const std::vector<uint8_t>& data) {
     if (data.size() > max_packet) throw std::runtime_error("World state is too large.");
     Reader r{data}; Snapshot s;
-    if (r.get<uint8_t>() != 0x53 || r.get<uint8_t>() != 6) throw std::runtime_error("Incompatible world state.");
+    if (r.get<uint8_t>() != 0x53 || r.get<uint8_t>() != 8) throw std::runtime_error("Incompatible world state.");
     s.frame = r.get<uint16_t>(); s.sequence = r.get<uint32_t>();
     s.camera_x = r.get<int32_t>(); s.camera_y = r.get<int32_t>();
     s.width = r.get<uint16_t>(); s.height = r.get<uint16_t>();
@@ -163,6 +170,10 @@ inline Snapshot decode(const std::vector<uint8_t>& data) {
             (used_channels & (uint64_t(1) << (m.channel - 1)))) throw std::runtime_error("Invalid music channel.");
         used_channels |= uint64_t(1) << (m.channel - 1); s.music.push_back(m);
     }
+    s.epoch = r.get<uint32_t>();
+    const auto party_size = r.get<uint32_t>();
+    if (party_size > 65536) throw std::runtime_error("Party data is too large.");
+    for (uint32_t i = 0; i < party_size; ++i) s.party.push_back(char(r.get<uint8_t>()));
     if (r.pos != data.size()) throw std::runtime_error("Unexpected world state data.");
     return s;
 }

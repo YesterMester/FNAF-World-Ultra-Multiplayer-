@@ -1,6 +1,9 @@
 #pragma once
 #include <windows.h>
 #include <winhttp.h>
+#ifndef WINHTTP_OPTION_WEB_SOCKET_KEEPALIVE_INTERVAL
+#define WINHTTP_OPTION_WEB_SOCKET_KEEPALIVE_INTERVAL 116
+#endif
 #include <atomic>
 #include <condition_variable>
 #include <deque>
@@ -30,6 +33,7 @@ inline std::string narrow(const std::wstring& s) {
 class Connection : public std::enable_shared_from_this<Connection> {
     std::atomic<HINTERNET> socket{nullptr};
     std::atomic<bool> stopped{false};
+    std::atomic<bool> notified_disconnect{false};
     std::mutex mutex;
     std::condition_variable wake;
     std::deque<std::string> outgoing;
@@ -42,6 +46,9 @@ class Connection : public std::enable_shared_from_this<Connection> {
             if (audio != incoming.end()) incoming.erase(audio); else incoming.pop_front();
         }
         incoming.push_back(std::move(msg));
+    }
+    void disconnected() {
+        if (!notified_disconnect.exchange(true)) notice({{"type", "disconnected"}});
     }
     void transmit() {
         while (!stopped) {
@@ -57,7 +64,10 @@ class Connection : public std::enable_shared_from_this<Connection> {
             DWORD error = !message.empty()
                 ? WinHttpWebSocketSend(handle, WINHTTP_WEB_SOCKET_UTF8_MESSAGE_BUFFER_TYPE, message.data(), DWORD(message.size()))
                 : WinHttpWebSocketSend(handle, WINHTTP_WEB_SOCKET_BINARY_MESSAGE_BUFFER_TYPE, world.data(), DWORD(world.size()));
-            if (error) { stop(); break; }
+            // Some WinHTTP implementations can keep Receive blocked while a
+            // failed Send closes the handle. Notify the game before closing,
+            // so it can release controls and reconnect on either failure path.
+            if (error) { disconnected(); stop(); break; }
         }
     }
     void run(std::wstring endpoint, Json hello) {
@@ -73,7 +83,7 @@ class Connection : public std::enable_shared_from_this<Connection> {
             std::wstring host(u.lpszHostName, u.dwHostNameLength);
             std::wstring path(u.lpszUrlPath, u.dwUrlPathLength);
             if (path.empty() || path == L"/") path = L"/lobbies";
-            session = WinHttpOpen(L"FWUM/1.1", WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY, nullptr, nullptr, 0);
+            session = WinHttpOpen(L"FWUM/1.2", WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY, nullptr, nullptr, 0);
             if (!session) throw std::runtime_error("Couldn't open the online connection.");
             // Older WinHTTP/Wine defaults can still select obsolete TLS versions.
             DWORD protocols = WINHTTP_FLAG_SECURE_PROTOCOL_TLS1_2 | 0x00002000; // TLS 1.3
@@ -91,6 +101,10 @@ class Connection : public std::enable_shared_from_this<Connection> {
             }
             auto ws = WinHttpWebSocketCompleteUpgrade(request, 0);
             if (!ws) throw std::runtime_error("The online service refused the connection.");
+            // Wine's synchronous WebSocket receive loop sends an unlocked pong
+            // when its 30s keepalive timer expires, racing active snapshot sends.
+            DWORD keepalive = 0x7fffffff;
+            WinHttpSetOption(ws, WINHTTP_OPTION_WEB_SOCKET_KEEPALIVE_INTERVAL, &keepalive, sizeof keepalive);
             socket = ws;
             if (stopped) { stop(); throw std::runtime_error("Connection cancelled."); }
             auto text = hello.dump();
@@ -113,7 +127,7 @@ class Connection : public std::enable_shared_from_this<Connection> {
                 }
             }
         } catch (const std::exception& e) { notice({{"type", "connection-error"}, {"message", e.what()}}); }
-        stop(); notice({{"type", "disconnected"}});
+        disconnected(); stop();
         if (request) WinHttpCloseHandle(request);
         if (connect) WinHttpCloseHandle(connect);
         if (session) WinHttpCloseHandle(session);

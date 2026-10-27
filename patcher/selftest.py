@@ -16,6 +16,8 @@ from fwump.ccn import Decrypter, Game, read_chunks  # noqa: E402
 from fwump.checksum import make_checksum, make_pame_checksum  # noqa: E402
 from fwump.fusion import Events, pack_chunk, parse_frames, parse_objects  # noqa: E402
 from fwump.online import gate_keyboard  # noqa: E402
+from fwump.combat import replace_team_flag  # noqa: E402
+from fwump.minigames import remap_item  # noqa: E402
 
 
 class FakeGame:
@@ -106,6 +108,22 @@ def test_keyboard_focus():
           "native pad input and original menu keys retain their branches")
 
 
+def test_slot_teams():
+    for cache in (0, 2, 10, -1):
+        flag = evb.t_objexp(2, 13, 315)
+        flag = flag[:-2] + struct.pack("<h", cache)
+        parameter = evb.p_expr(flag, evb.t_long(0), evb.t_close(), evb.t_op("+"), evb.t_long(4))
+        replacement = evb.t_ext(46, 22, 1353) + evb.t_long(3) + evb.t_close()
+        check(replace_team_flag(parameter, 315, replacement) == 1 and
+              parameter.data == evb.p_expr(replacement, evb.t_op("+"), evb.t_long(4)).data,
+              "per-slot teams handle Fusion object cache %d" % cache)
+    text = "Team flag bytes " + (evb.t_objexp(2, 13, 315) + evb.t_long(0) + evb.t_close()).decode("utf-16-le")
+    parameter = evb.p_expr(evb.t_str(text))
+    before = parameter.data
+    check(replace_team_flag(parameter, 315, b"test") == 0 and parameter.data == before,
+          "team rewrites leave string literals intact")
+
+
 def test_game(path):
     g = Game(path)
     objs = parse_objects(g)
@@ -115,6 +133,8 @@ def test_game(path):
     online = next((o for o in objs if o.name == "MP Online"), None)
     if online is not None:
         for f in frames:
+            check(all(group.actions for group in f.events.groups),
+                  "compiled events retain an action or a no-op in %r" % f.name)
             markers = [group for group in f.events.groups if any(
                 c.object_type == -1 and c.num == -42 for c in group.conditions)]
             check(all(len(group.conditions) == 1 for group in markers),
@@ -145,6 +165,20 @@ def test_game(path):
               evb.t_ext(online.type, 18, online.index) in c.params[0].data for c in wait.conditions) and
               not any(c.object_type == online.type and c.num == -97 for c in wait.conditions),
               "encounter loop authority guard preserves Fusion object selection")
+        cleanup = [g for g in battle.events.groups if any(
+            c.object_type == 2 and c.object_info == 305 and c.num == -32 and c.params and
+            c.params[0].data == evb.p_cmp("=", evb.t_long(3)).data for c in g.conditions)
+            and any(a.object_type == 2 and a.object_info == 305 and a.num == 24 for a in g.actions)
+            and not any(a.object_type == online.type for a in g.actions)]
+        check(cleanup and all(not any(c.object_type == 2 and c.object_info == 68 for c in g.conditions)
+                              for g in cleanup),
+              "attack-button cleanup remains independent of a living acting character")
+        mixed_indices = [c for g in battle.events.groups for c in g.conditions
+                         if c.object_info in (68, 107, 235, 238) and
+                         ((c.num == -27 and c.params[0].code == 53) or c.num in (-24, -25)) and
+                         any(evb.t_ext(online.type, 22, online.index) in p.data for p in c.params)]
+        check(not mixed_indices,
+              "mixed-team turn and health conditions evaluate the team per instance")
     turn = next(group for group in battle.events.groups if any(
         a.object_type == -1 and a.num == 14 and a.params and
         "create button".encode("utf-16-le") in a.params[0].data for a in group.actions))
@@ -164,20 +198,67 @@ def test_game(path):
         clicks = [group for group in battle.events.groups if any(c.object_type >= 32 and c.num == -87 and
                   any(p.code == 1 and struct.unpack_from("<H", p.data, 2)[0] == 305 for p in c.params)
                   for c in group.conditions)]
-        check(bool(clicks) and all(any(c.object_type == online.type and c.object_info == online.index and
-              c.num == -113 for c in group.conditions) for group in clicks),
-              "online mouse attack events require the local player to own the turn")
+        check(bool(clicks) and all(any(c.object_type == -1 and c.num == -3 and
+              evb.t_ext(online.type, 21, online.index) in c.params[0].data for c in group.conditions) and
+              not any(c.object_type == online.type and c.num == -113 for c in group.conditions)
+              for group in clicks), "mouse ownership guards preserve the acting character selection")
         f9 = [group for group in battle.events.groups if any(c.object_type == -6 and c.num == -1 and
               any(p.code == 14 and struct.unpack_from("<H", p.data)[0] == 120 for p in c.params)
               for c in group.conditions)]
         check(bool(f9) and all(any(c.object_type == online.type and c.num == -103 and c.other_flags & 1
               for c in group.conditions) for group in f9), "F9 keyboard reassignment is disabled in native sessions")
     pc = g.chunk(0x2242)
+    from fwump.merge import Merger
+    for line in (259, 270):
+        interaction = next(group for group in battle.events.groups if group.line == line)
+        branches, _ = Merger.branches(interaction)
+        check(len(branches) == 4 and all(
+            any(interaction.conditions[i].object_type == 2 and interaction.conditions[i].num == -4 for i in b) and
+            next(i for i in b if interaction.conditions[i].object_type == 2 and interaction.conditions[i].num == -4) <
+            next(i for i in b if interaction.conditions[i].object_type == 2 and interaction.conditions[i].num in (-24, -25))
+            for b in branches) and all(
+            interaction.conditions[b[0]].object_type == -1 and interaction.conditions[b[0]].num == -28
+            for b in branches[1:]),
+            "overworld interaction line %d filters by overlapping player before target flags" % line)
+    companion_hitboxes = {o.index for o in objs if o.name in ("mp hitbox 2", "mp hitbox 3", "mp hitbox 4")}
+    check(bool(companion_hitboxes) and all(not (struct.unpack_from("<H", objs[oi].header, 4)[0] & 4)
+          for oi in companion_hitboxes), "companion hitboxes reset spawn flags on each frame entry")
+    companion_solids = {struct.unpack_from("<H", c.params[0].data, 2)[0]
+                        for group in battle.events.groups for c in group.conditions
+                        if c.object_info in companion_hitboxes and c.num == -4 and len(c.params) == 3}
+    check(companion_solids == {32806}, "companion obstacle probes use solid qualifier 32806 instead of triggers")
+    office = frames[33]
+    six_am = [group for group in office.events.groups if any(
+        c.object_type == -1 and c.num == -3 and evb.t_objexp(7, 80, 1289) in c.params[0].data
+        for c in group.conditions)]
+    check(len(six_am) == 1 and any(c.params[1].data == evb.p_cmp("=", evb.t_long(6)).data
+          for c in six_am[0].conditions if len(c.params) == 2),
+          "co-op office returns to world only at 6 AM rather than at 12 AM")
     tc = g.chunk(0x222F)
     stored = struct.unpack("<I", pc.decode(g))[0]
     check(stored == make_pame_checksum(bytes(g.data[tc.offset:pc.offset])), "protection checksum valid")
     for f in frames:
         check(f.events.serialize() == f.sub(0x333D).decode(g), "events of %r re-read" % f.name)
+
+
+def test_participant_references():
+    source, target = 1210, 1600
+    embedded = chr(source) + " keeps its text"
+    item = evb.act(2, 31, source, [evb.p_altval(1), evb.p_expr(
+        evb.t_altval(2, source, 2), evb.t_op("+"), evb.t_long(source), evb.t_op("+"), evb.t_str(embedded))])
+    remap_item(item, {source: target})
+    check(item.object_info == target and evb.t_altval(2, target, 2) in item.params[1].data,
+          "participant actor and expression references remap together")
+    check(evb.t_long(source) in item.params[1].data and evb.t_str(embedded) in item.params[1].data,
+          "participant remapping preserves numeric constants and string contents")
+    overlap = evb.act(2, -4, 32772, [evb.p_object(2, source)])
+    remap_item(overlap, {source: target})
+    check(overlap.object_info == target and overlap.params[0].data == evb.p_object(2, 32772).data,
+          "participant collision owners retain the shared hazard target")
+    children = evb.act(-1, 43, 65535, [evb.Param(69, struct.pack("<4i", 2, source, 100, -1))])
+    remap_item(children, {source: target})
+    check(children.params[0].data == struct.pack("<4i", 2, target, 100, -1),
+          "participant child selections retain their count and shared objects")
 
 
 def main():
@@ -188,6 +269,8 @@ def main():
     test_chunks()
     test_events()
     test_keyboard_focus()
+    test_slot_teams()
+    test_participant_references()
     if a.game:
         test_game(a.game)
     print("all good")

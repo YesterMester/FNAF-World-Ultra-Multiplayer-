@@ -1,5 +1,29 @@
 # Changelog
 
+## 1.2.0 — 2026-10-27
+
+- Shared four-slot party with four paired reserves, duplicate picks, the full
+  categorized roster, locked portraits and clear ownership outlines.
+- Independent online roster browsing and validated edits to owned slots only.
+  Reset affects the requesting player's entries; supported skins are cosmetic.
+- Correct per-slot battle ownership, individual reserve swaps, active health and
+  cooldowns, automatic living-reserve replacement and all-party defeat handling.
+- Each player's first selected character appears in exploration and side by side
+  in NPC conversations. Fit visible sprite bounds rather than transparent canvas.
+- Independent online cameras and corrected image/layer/shader replication.
+  Guest colliders can activate the original shared world interactions.
+- D-pad focus, A select and B back in menus, a controller-friendly online lobby
+  with four-digit code entry, and controller editing for Options sliders.
+- Separate hooks, ships, platformer actors and Rainbow runners in minigames;
+  shared puzzle/stage/results, personal controls and applicable health/respawns.
+- Scene-scoped input, release latches and stronger connection recovery. Node
+  relays accept active application traffic as a heartbeat.
+- Correct guest world interactions, solid-obstacle collision and companion
+  respawning after scene changes. Wine WebSocket connections remain alive
+  during active play. The shared office ends at 6 AM, rather than at midnight.
+- Release publication requires a qualification manifest and promotes the exact
+  tested Windows/Linux patchers without rebuilding the native extension.
+
 ## 1.1.1 — 2026-10-25
 
 - Restore Ultra's original encounter cooldown by preserving object selection in nested game events.

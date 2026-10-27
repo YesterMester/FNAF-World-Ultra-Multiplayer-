@@ -1,0 +1,541 @@
+{
+  "schema": 1,
+  "version": "1.2.0",
+  "qualified_source_commit": "c4649affbb2a93968051d3841ea3aea22a4322e1",
+  "runtime_test_source_commit": "18302961d90212f4e5f0932b8921b30618a8e376",
+  "runtime_equivalence": "Qualified source changes documentation only; both final patchers were re-run and produce the exact live-tested game/native files.",
+  "results": {
+    "party_and_battle": {
+      "status": "passed",
+      "module_sha256": "7e3501f5bd5774922e9a2fa8d16ab6c722a6785e23f3191ef969d512bf406d02",
+      "game_sha256": "4217cb53736c6c0cb2b9997d9ba7765aed6e8052d2df8c90f986901738b55928",
+      "checks": [
+        {
+          "name": "party-open",
+          "status": "passed"
+        },
+        {
+          "name": "party-independent",
+          "status": "passed"
+        },
+        {
+          "name": "party-owned",
+          "status": "passed"
+        },
+        {
+          "name": "party-commands",
+          "status": "passed"
+        },
+        {
+          "name": "delayed-skin-confirmation",
+          "status": "passed"
+        },
+        {
+          "name": "fight",
+          "status": "passed"
+        },
+        {
+          "name": "battle-open",
+          "status": "passed"
+        },
+        {
+          "name": "turn-owners",
+          "status": "passed"
+        },
+        {
+          "name": "reserves",
+          "status": "passed"
+        }
+      ],
+      "stage": "reserves",
+      "ended": 1793083753.8921702
+    },
+    "four_real_clients": {
+      "status": "passed",
+      "clients": "four real Windows game processes on Proton in four isolated GPU displays and prefixes",
+      "game_sha256": "4217cb53736c6c0cb2b9997d9ba7765aed6e8052d2df8c90f986901738b55928",
+      "module_sha256": "7e3501f5bd5774922e9a2fa8d16ab6c722a6785e23f3191ef969d512bf406d02",
+      "checks": [
+        {
+          "scene": 19,
+          "clients": 4,
+          "distinct_duplicate_actors": 4,
+          "visible_heights": [
+            185.0,
+            185.0,
+            185.0,
+            185.0
+          ]
+        },
+        {
+          "scene": 18,
+          "clients": 4,
+          "distinct_duplicate_actors": 4,
+          "visible_heights": [
+            185.0,
+            185.0,
+            185.0,
+            185.0
+          ]
+        },
+        {
+          "scene": 21,
+          "clients": 4,
+          "distinct_duplicate_actors": 4,
+          "visible_heights": [
+            185.0,
+            185.0,
+            185.0,
+            185.0
+          ]
+        },
+        {
+          "scene": 26,
+          "movement_before": [
+            290,
+            312,
+            334,
+            356
+          ],
+          "after_p3": [
+            290,
+            312,
+            439,
+            356
+          ],
+          "after_p4": [
+            290,
+            312,
+            439,
+            529
+          ]
+        },
+        {
+          "four_battle_ownership_and_reserves": true
+        },
+        {
+          "left_during_dialogue": true,
+          "remaining_clients": 3,
+          "remaining_actors": 3
+        }
+      ]
+    },
+    "four_player_battle": {
+      "status": "passed",
+      "players": 4,
+      "game_sha256": "4217cb53736c6c0cb2b9997d9ba7765aed6e8052d2df8c90f986901738b55928",
+      "module_sha256": "7e3501f5bd5774922e9a2fa8d16ab6c722a6785e23f3191ef969d512bf406d02",
+      "input": "four real keyboard clients; Z confirms, E switches; two-client core covers mouse input",
+      "duplicate_primaries": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "checks": [
+        {
+          "slot": 1,
+          "owner": 1,
+          "wrong_owner_rejected": true,
+          "attack_accepted": true
+        },
+        {
+          "slot": 3,
+          "owner": 3,
+          "wrong_owner_rejected": true,
+          "attack_accepted": true
+        },
+        {
+          "slot": 4,
+          "owner": 4,
+          "wrong_owner_rejected": true,
+          "attack_accepted": true
+        },
+        {
+          "slot": 2,
+          "owner": 2,
+          "wrong_owner_rejected": true,
+          "attack_accepted": true
+        },
+        {
+          "slot": 1,
+          "only_this_slot_switched": true,
+          "teams": 3
+        },
+        {
+          "slot": 3,
+          "only_this_slot_switched": true,
+          "teams": 7
+        },
+        {
+          "slot": 4,
+          "only_this_slot_switched": true,
+          "teams": 15
+        },
+        {
+          "slot": 2,
+          "only_this_slot_switched": true,
+          "teams": 13
+        }
+      ]
+    },
+    "world_guest": {
+      "status": "passed",
+      "guest_timer_after_half_second": 155,
+      "idle_timer": 155,
+      "guest_chest": {
+        "position": [
+          1925,
+          1175
+        ],
+        "reward_once": 10,
+        "battle_after_fixture_placement": false
+      },
+      "host_camera": [
+        1421,
+        686
+      ],
+      "guest_camera": [
+        1502,
+        693
+      ],
+      "guest_initiated_npc_scene": 19,
+      "npc_actors": 2,
+      "game_sha256": "4217cb53736c6c0cb2b9997d9ba7765aed6e8052d2df8c90f986901738b55928",
+      "module_sha256": "7e3501f5bd5774922e9a2fa8d16ab6c722a6785e23f3191ef969d512bf406d02"
+    },
+    "minigames": {
+      "status": "passed",
+      "module_sha256": "7e3501f5bd5774922e9a2fa8d16ab6c722a6785e23f3191ef969d512bf406d02",
+      "game_sha256": "4217cb53736c6c0cb2b9997d9ba7765aed6e8052d2df8c90f986901738b55928",
+      "clients": "two real game processes, keyboard/mouse switching focus",
+      "checks": [
+        {
+          "name": "fighters-outcome-check.py",
+          "status": "passed",
+          "frames": [
+            4,
+            4
+          ],
+          "connected": true
+        },
+        {
+          "name": "fishing-outcome-check.py",
+          "status": "passed",
+          "frames": [
+            4,
+            4
+          ],
+          "connected": true
+        },
+        {
+          "name": "space-outcome-check.py",
+          "status": "passed",
+          "frames": [
+            4,
+            4
+          ],
+          "connected": true
+        },
+        {
+          "name": "trial-outcome-check.py",
+          "status": "passed",
+          "frames": [
+            4,
+            4
+          ],
+          "connected": true
+        },
+        {
+          "name": "rainbow-outcome-check.py",
+          "status": "passed",
+          "frames": [
+            26,
+            26
+          ],
+          "connected": true
+        },
+        {
+          "name": "rainbow-checkpoint-finish.py",
+          "status": "passed",
+          "frames": [
+            4,
+            4
+          ],
+          "connected": true
+        },
+        {
+          "name": "rainbow-team-failure.py",
+          "status": "passed",
+          "frames": [
+            4,
+            4
+          ],
+          "connected": true
+        }
+      ],
+      "stage": "rainbow-team-failure.py"
+    },
+    "clock_four": {
+      "code_before": 0,
+      "code_after": 395248,
+      "target_id": 0,
+      "target_direction": 0,
+      "target_position": [
+        288,
+        352
+      ],
+      "guest_position": [
+        288,
+        342
+      ],
+      "host_stationary": [
+        50,
+        400
+      ],
+      "module_sha256": "7e3501f5bd5774922e9a2fa8d16ab6c722a6785e23f3191ef969d512bf406d02",
+      "progress": 3,
+      "clock_before": 8,
+      "clock_after": 9,
+      "status": "passed",
+      "game_sha256": "4217cb53736c6c0cb2b9997d9ba7765aed6e8052d2df8c90f986901738b55928"
+    },
+    "office": {
+      "status": "passed",
+      "input": "Guest D-pad/A through keyboard adapter",
+      "midnight_stays_in_office": true,
+      "shared_camera_before": 0,
+      "shared_camera_after": 1,
+      "six_am_returns_to_world": true,
+      "module_sha256": "7e3501f5bd5774922e9a2fa8d16ab6c722a6785e23f3191ef969d512bf406d02",
+      "game_sha256": "4217cb53736c6c0cb2b9997d9ba7765aed6e8052d2df8c90f986901738b55928"
+    },
+    "network_recovery": {
+      "status": "passed",
+      "short_outage_ms": 5000,
+      "short_resume_seconds": 6.04,
+      "held_confirm_did_not_repeat": true,
+      "neutral_confirm_works": true,
+      "beyond_grace_outage_ms": 35000,
+      "expired_seat_released": true,
+      "fresh_rejoin_works": true,
+      "guest_progress_preserved": true,
+      "module_sha256": "7e3501f5bd5774922e9a2fa8d16ab6c722a6785e23f3191ef969d512bf406d02",
+      "game_sha256": "4217cb53736c6c0cb2b9997d9ba7765aed6e8052d2df8c90f986901738b55928"
+    },
+    "public_native": {
+      "status": "passed",
+      "endpoint": "wss://fwum-relay.famous-cry.workers.dev/lobbies",
+      "clients": "two real Windows game processes under Proton",
+      "coded_lobby_discovery_and_join": true,
+      "leading_zero_code": true,
+      "open_lobby_join_and_guest_leave": true,
+      "independent_movement_before": [
+        1821,
+        1821
+      ],
+      "independent_movement_after": [
+        1821,
+        1892
+      ],
+      "connected_beyond_keepalive_seconds": 65,
+      "host_closure_returns_guest": true,
+      "guest_save_preserved": true,
+      "module_sha256": "7e3501f5bd5774922e9a2fa8d16ab6c722a6785e23f3191ef969d512bf406d02",
+      "game_sha256": "4217cb53736c6c0cb2b9997d9ba7765aed6e8052d2df8c90f986901738b55928"
+    },
+    "local_controllers": {
+      "status": "passed",
+      "input": "two simulated XInput controllers in one offline real game under Proton",
+      "module_sha256": "7e3501f5bd5774922e9a2fa8d16ab6c722a6785e23f3191ef969d512bf406d02",
+      "title_file_party_navigation": true,
+      "duplicate_pick_only_slot2": true,
+      "skin_section": "local-2",
+      "skin": 196,
+      "reset_only_owned_rows": true,
+      "invalid_start_rejected": true,
+      "world_movement": [
+        1821,
+        1858
+      ],
+      "controller_toolbar_menus": [
+        "chips",
+        "bytes",
+        "options"
+      ],
+      "p2_loadout_back_works": true,
+      "host_options_back_works": true,
+      "game_sha256": "4217cb53736c6c0cb2b9997d9ba7765aed6e8052d2df8c90f986901738b55928"
+    },
+    "clock_two": {
+      "status": "passed",
+      "mode": "Clock puzzle 2",
+      "progress": [
+        2,
+        2,
+        4,
+        4
+      ],
+      "host_position": [
+        50,
+        400
+      ],
+      "clock_before": 7,
+      "clock_after": 8,
+      "clock_after_failed_round": 8,
+      "fixture": "Original four targets; P2 placed near each, then uses keyboard movement"
+    },
+    "options": {
+      "status": "passed",
+      "input": "Keyboard mapped through native D-pad/A/B adapter",
+      "knob_x_before": 140,
+      "knob_x_after": 120,
+      "return_frames": [
+        4,
+        4
+      ]
+    },
+    "patcher_builds": [
+      {
+        "patcher": "linux",
+        "existing_profile_preserved": true,
+        "game_sha256": "4217cb53736c6c0cb2b9997d9ba7765aed6e8052d2df8c90f986901738b55928",
+        "native_sha256": "7e3501f5bd5774922e9a2fa8d16ab6c722a6785e23f3191ef969d512bf406d02",
+        "compatibility": "6ac9245d0f9517cb41b575609a85e3a6594e6ca772a4a9446375b754635dba5d",
+        "public_relay_included": true
+      },
+      {
+        "patcher": "windows",
+        "existing_profile_preserved": true,
+        "game_sha256": "4217cb53736c6c0cb2b9997d9ba7765aed6e8052d2df8c90f986901738b55928",
+        "native_sha256": "7e3501f5bd5774922e9a2fa8d16ab6c722a6785e23f3191ef969d512bf406d02",
+        "compatibility": "6ac9245d0f9517cb41b575609a85e3a6594e6ca772a4a9446375b754635dba5d",
+        "public_relay_included": true
+      }
+    ],
+    "embedded_native": [
+      {
+        "artifact": "FWUM-Patcher-Linux-SteamDeck",
+        "sha256": "729cfe3226630cbcd4bb433d5266fee4de46a37fe337394341854d6e50f5035e",
+        "embedded_native_sha256": "7e3501f5bd5774922e9a2fa8d16ab6c722a6785e23f3191ef969d512bf406d02"
+      },
+      {
+        "artifact": "FWUM-Patcher-Windows.exe",
+        "sha256": "1d3e72db0ef121288fc11c9a6b502c1e24e53042a0e9bb20a45744c14bfb4d37",
+        "embedded_native_sha256": "7e3501f5bd5774922e9a2fa8d16ab6c722a6785e23f3191ef969d512bf406d02"
+      }
+    ],
+    "package_audit": {
+      "status": "passed",
+      "patchers": [
+        {
+          "artifact": "FWUM-Patcher-Linux-SteamDeck",
+          "archive_entry_count": 396,
+          "no_game_archives_profiles_or_test_input_files": true,
+          "bundled_license_matches_normalized_line_endings": true,
+          "third_party_notices_present": true,
+          "only_public_relay_configuration": true
+        },
+        {
+          "artifact": "FWUM-Patcher-Windows.exe",
+          "archive_entry_count": 1004,
+          "no_game_archives_profiles_or_test_input_files": true,
+          "bundled_license_matches_normalized_line_endings": true,
+          "third_party_notices_present": true,
+          "only_public_relay_configuration": true
+        }
+      ],
+      "tracked_source_known_secret_patterns_clear": true
+    },
+    "installation": {
+      "status": "passed",
+      "version": "1.2.0",
+      "source_commit": "c4649affbb2a93968051d3841ea3aea22a4322e1",
+      "save_preserved_byte_for_byte": true,
+      "other_profiles_preserved": true,
+      "public_relay_and_player_name_preserved": true,
+      "desktop_launchers_preserved": true,
+      "game_sha256": "4217cb53736c6c0cb2b9997d9ba7765aed6e8052d2df8c90f986901738b55928",
+      "module_sha256": "7e3501f5bd5774922e9a2fa8d16ab6c722a6785e23f3191ef969d512bf406d02",
+      "installed_launcher_starts_game": true,
+      "installed_native_loaded": true,
+      "installed_f10_lobby_opens": true,
+      "title_loop_before": 4,
+      "title_loop_after": 125,
+      "save_preserved_after_smoke": true,
+      "installed_public_relay_connects": true
+    },
+    "performance": {
+      "offline": {
+        "label": "release-offline",
+        "seconds": 60.0,
+        "clients": [
+          {
+            "fps": 55.49,
+            "median_frame_ms": 17.33,
+            "p95_frame_ms": 23.85,
+            "samples": 3329
+          },
+          {
+            "fps": 55.9,
+            "median_frame_ms": 17.32,
+            "p95_frame_ms": 23.77,
+            "samples": 3354
+          }
+        ]
+      },
+      "online": {
+        "label": "release-online",
+        "seconds": 60.0,
+        "clients": [
+          {
+            "fps": 54.7,
+            "median_frame_ms": 17.39,
+            "p95_frame_ms": 24.51,
+            "samples": 3281
+          },
+          {
+            "fps": 55.32,
+            "median_frame_ms": 17.32,
+            "p95_frame_ms": 23.91,
+            "samples": 3319
+          }
+        ]
+      }
+    },
+    "mixed_session": {
+      "status": "reviewed_passed",
+      "duration_seconds": 1799.91,
+      "observations": 322,
+      "readable_client_samples": 626,
+      "transient_memory_reads_during_scene_changes": 18,
+      "stale_diagnostics": 0,
+      "unexplained_disconnects": 0,
+      "expected_interruption_samples": 8,
+      "party_object_counts_after_reentry": {
+        "p1": 428,
+        "p2": 426
+      },
+      "module_sha256": "7e3501f5bd5774922e9a2fa8d16ab6c722a6785e23f3191ef969d512bf406d02",
+      "game_sha256": "4217cb53736c6c0cb2b9997d9ba7765aed6e8052d2df8c90f986901738b55928",
+      "note": "Nonplaying samples belong to the deliberate beyond-grace guest interruption; fresh rejoin was separately asserted. Four-process CPU/GPU saturation is excluded from the matched two-process performance comparison."
+    },
+    "automated": {
+      "status": "passed",
+      "structural_assertions": 313,
+      "frames_checked": 39,
+      "native_logic_cases": [
+        "input",
+        "snapshot",
+        "images",
+        "ownership",
+        "navigation"
+      ],
+      "relay_tests": 27,
+      "relay_failures": 0,
+      "build_run": 40465128131,
+      "online_checks_run": 40465128127,
+      "worker_bundle_dry_run": true
+    }
+  }
+}

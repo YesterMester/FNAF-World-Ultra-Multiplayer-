@@ -2,8 +2,8 @@
 
 The native online mode gives each player their own running copy of Ultra. The
 host owns the simulation and save. Guests send their assigned controller state
-and render the host's objects, strings, counters, camera and layers using their
-own game assets. No screen stream, controller driver, router forwarding or
+and render shared objects, strings, counters and layers using their own game
+assets. Each online exploration camera follows its assigned player. No screen stream, controller driver, router forwarding or
 player account is needed.
 
 The official patchers include the public relay address. The relay is deployed at
@@ -24,8 +24,10 @@ without configuring hosting.
    title screen. Leaving as host closes the lobby for everyone.
 
 Keyboard guests can use WASD/arrows to walk, Z/Enter/Space to confirm, X/Shift
-to fire, R to flee, Tab for the map and E to switch parties. The host operates
-the game's mouse menus. Each computer contributes one player in native mode;
+to fire, R to go back/flee, Tab for the map and E to swap the acting character
+with its paired reserve. D-pad/A/B operate menus; party browsing and cursors are
+independent. Travel, story, loadout and shops use a shared screen, and the host
+controls save/file/settings changes. Each computer contributes one player in native mode;
 the existing four-controller local mode remains available outside a session.
 
 ## Free public relay
@@ -169,7 +171,7 @@ processes under Proton 11 through Steam Linux Runtime 4. The checks include:
   party switching preserves ownership, and F9 cannot reassign native seats.
 - Late joins, guest leave/rejoin and host closure returning guests to their own title.
 - Actual text/counter readback, including newly created objects, negative values
-  and signed 32-bit limits. The format checks cover all 39 game frames.
+  and signed 32-bit limits. Structural checks cover all 39 game frames.
 - Connection resumption after a local Cloudflare runtime restart, retaining seats.
 
 The Windows and Linux patchers share one Windows-built native module. Testing on this computer runs the Windows executable through Proton; a separate
@@ -183,8 +185,8 @@ video streams, game assets or save files travel through the relay.
 Active sprites use the original file image handles on the wire. Fusion assigns
 different compact image-bank indices after frame loads, so sending a host's
 runtime index can show an unrelated character or attack on a guest. Each side
-translates through its own image-bank tables; snapshot format 6 rejects the old
-index-based format. Image mapping checks exercise all 720 permutations of a
+translates through its own image-bank tables; snapshot format 8 retains original image handles and adds scene epochs and
+shared-party metadata. Compatibility IDs prevent mixed game/module builds. Image mapping checks exercise all 720 permutations of a
 client bank plus unloaded and invalid handles.
 
 For private lab diagnostics, add `diagnostics=C:\path\to\fwum.log` under
