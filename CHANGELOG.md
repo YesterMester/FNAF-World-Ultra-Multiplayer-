@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.2.0 — 2026-10-26
+## 1.2.0 — 2026-10-27
 
 - Shared four-slot party with four paired reserves, duplicate picks, the full
   categorized roster, locked portraits and clear ownership outlines.
@@ -18,6 +18,9 @@
   shared puzzle/stage/results, personal controls and applicable health/respawns.
 - Scene-scoped input, release latches and stronger connection recovery. Node
   relays accept active application traffic as a heartbeat.
+- Correct guest world interactions, solid-obstacle collision and companion
+  respawning after scene changes. Wine WebSocket connections remain alive
+  during active play. The shared office ends at 6 AM, rather than at midnight.
 - Release publication requires a qualification manifest and promotes the exact
   tested Windows/Linux patchers without rebuilding the native extension.
 

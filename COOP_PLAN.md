@@ -1,6 +1,9 @@
 # FNaF World Ultra Multiplayer: co-op completion plan
 
-Updated: 2026-10-26. **Work in progress; the current changes are not release-qualified.**
+Updated: 2026-10-27. **Version 1.2.0 release qualification is recorded in
+[`qa/releases/1.2.0.json`](qa/releases/1.2.0.json).** The acceptance scenarios below
+remain the long-term regression specification; the qualification report states
+the exact exercised paths and the limits of that evidence.
 
 ## 1. Target, references and current state
 
@@ -24,16 +27,16 @@ content, and the player's explicit changes take priority over reference behavior
 
 ### Evidence baseline
 
-| Area | Current evidence | Still required |
+| Area | Current evidence | Coverage limits |
 |---|---|---|
-| Published build | v1.1.1, source commit `22e5da5cbe26786a37a8ab70d845efe04e410874` | Treat the reported gameplay bugs as open |
-| Party editing | Earlier private runs demonstrated owned-slot edits and duplicate choices | Repeat on the latest build; qualify outlines, controllers and independent browsing |
-| Battle fixes | Two clients passed all four owners, individual switches in both directions, dead-reserve rejection, automatic replacement and defeat (private run `20261026-041315`) | Wider attack coverage, disconnects, victory/flee and final artifact |
-| Rendering and cameras | Local camera, motion smoothing and scan optimizations have been implemented | Reproduce and resolve the guest overlay; measure both clients |
-| NPC lineup | Fredbear shows primary characters for 2 and 4 current participants; both real clients render the lineup | Correct visible sprite sizing, duplicates, other scenes and exits |
-| Skins, remaining menus and minigames | Requirements and source inventory identified | Implementation and gameplay evidence |
-| Automated checks | Saved logs show patcher self-tests and 24 relay tests passing | Run affected checks after changes; these results do not qualify gameplay |
-| Latest private build | Native extension and paired game build completed; DLL SHA-256 `34665d3ffc714d0dab6a21116b7bcabf4f8c10f5a3f3db43a5c5dd8dc63585dc` | Live verification, then qualification of the final shared MSVC artifact |
+| Release files | Both patchers from CI run `40465128131`, source `c4649affbb2a93968051d3841ea3aea22a4322e1`, produce identical tested game data and native module | Windows executable tested under Proton; no physical Windows machine |
+| Party editing | Two-client independent categories/cursors, explicit ownership, duplicates, locked picks, reset, invalid Done and delayed skin receipts passed; two local simulated controllers passed | No physical-controller qualification |
+| Battle fixes | Two clients passed all four slot owners with mouse input, both reserve directions, dead-reserve rejection, automatic replacement and defeat; four real clients passed owner rejection and individual reserves with keyboard input | Does not exhaust every Ultra attack/status combination |
+| Rendering and cameras | Guest walking, independent camera coordinates, world labels and clean scene changes passed; matched 60-second offline/online performance recorded | Four concurrent processes on one Deck are a rendering stress test, not a four-machine performance benchmark |
+| NPC lineup | Four real clients rendered four distinct duplicate characters in Fredbear, Animdude and creator scenes; each measured 185 pixels tall; leave-mid-dialogue cleanup passed | Not an exhaustive visual check of every skin |
+| Minigames | Two real clients passed personal controls and shared outcome scenarios for flight, fishing, FNaF 57, Foxy.exe and Rainbow; clock puzzles 2/4 and office camera/6 AM return passed | Outcome fixtures are identified; these are not full manual runs of every course |
+| Session recovery | Added 100 ms RTT with jitter, five-second resume, held-confirm release, beyond-grace rejoin and a 30-minute mixed session checked | Free public relay capacity and outages remain external limits |
+| Automated checks | Patcher structure checks cover all 39 frames; five native logic checks and 27 Node/Cloudflare relay tests pass in CI | Structural checks complement real gameplay evidence |
 
 Use four distinct statuses for each item: **planned**, **implemented**,
 **checked in a private game**, and **qualified on the release artifact**.
@@ -241,20 +244,20 @@ patcher and permitted dependencies, not extracted game content.
 
 Frame numbers below are zero-based Ultra frames.
 
-| Area / frames | Required behavior and adaptation | Starting state |
+| Area / frames | Required behavior and adaptation | Implementation and evidence |
 |---|---|---|
-| Warning, title and file: 0–2 | Controller focus, new/continue, file selection, online entry, release latch | Keyboard mirroring exists; full menu audit needed |
-| Party: 3 | Full categorized roster, owned slots, duplicates, outlines, independent online browsing | Partial implementation |
-| Overworld/underground: 4–8 | Separate actors, collision, interactions, pause/map/warp, area transitions | Main-world companions exist; underground coverage incomplete |
-| Battles within 4 | Owner turns, all attacks, individual reserve switch, flee, results | Fixes implemented; live qualification pending |
-| Game over/loading: 9–10 | Shared outcome, retry/return, no stale controls or old-scene objects | Audit required |
-| Loadout: 11 | Chips/bytes, equip limits, remove, unavailable feedback and synchronized committed changes | Menu parity incomplete |
-| Shops: 12, 35–36 | Browse, prices, buy, insufficient funds, Back, one debit and reward | Menu parity incomplete |
-| Dialogue: 19 and embedded NPC events | All-player first-character lineup, shared dialogue, correct exit | To implement |
-| Clock/creator rooms: 20–21 | Shared puzzle/story state and correct participant representation | Audit/adaptation required |
-| Fishing and other minigames: 14, 23–26, 33–34 | Separate meaningful participation, deaths, retries and one shared result | Per-mode work required |
-| Endings/cutscenes/results: 13, 15–18, 22, 27–30, 37–38 | Correct group staging where applicable, confirm/back, music, rewards, return | Audit required |
-| Options/help: 31–32 | D-pad/A/B, local preferences, legible control prompts | Menu parity incomplete |
+| Warning, title and file: 0–2 | Controller focus, new/continue, file selection, online entry, release latch | Native focus invokes original actions; local controller-only title/file/party path checked |
+| Party: 3 | Full categorized roster, owned slots, duplicates, outlines, independent online browsing | Implemented in `party.py` and native party handlers; two-client and local-controller evidence |
+| Overworld/underground: 4–8 | Separate actors, collision, interactions, pause/map/warp, area transitions | Common companion/camera adapters cover these frames; exact-artifact world evidence covers walking, chest/NPC interaction, encounters and camera separation |
+| Battles within 4 | Owner turns, all attacks, individual reserve switch, flee, results | Slot-based adapter retains Ultra attacks; two/four-client ownership and reserve scenarios passed; attack matrix remains sampled |
+| Game over/loading: 9–10 | Shared outcome, retry/return, no stale controls or old-scene objects | Common scene/epoch handling; defeat, repeated mode returns and expired-session title return checked |
+| Loadout: 11 | Chips/bytes, equip limits, remove, unavailable feedback and synchronized committed changes | Original equip actions remain authoritative; common controller targets; controller toolbar entry/Back checked for both views |
+| Shops: 12, 35–36 | Browse, prices, buy, insufficient funds, Back, one debit and reward | Original purchase/debit events retained under shared host authority; native focus targets audited; exhaustive purchase combinations not claimed |
+| Dialogue: 19 and embedded NPC events | All-player first-character lineup, shared dialogue, correct exit | Shared identity/staging adapter; guest entry and four real duplicate actors checked |
+| Clock/creator rooms: 20–21 | Shared puzzle/story state and correct participant representation | Guest clock interactions and single rewards checked; creator lineup checked on four real clients |
+| Fishing and other minigames: 14, 23–26, 33–34 | Separate meaningful participation, deaths, retries and one shared result | Personal hook/ship/actor adapters and shared outcomes checked; office shares cameras/tasks; HTU is an existing shared tutorial |
+| Endings/cutscenes/results: 13, 15–18, 22, 27–30, 37–38 | Correct group staging where applicable, confirm/back, music, rewards, return | Common replication and original result logic retained; Animdude/creator staging and minigame result boundaries checked, not every ending |
+| Options/help: 31–32 | D-pad/A/B, local preferences, legible control prompts | Native focus and slider editing implemented; slider adjustment, edit exit and return checked; settings changes remain host controlled |
 
 Intentional changes from the local mod must remain explicit: four-attack Ultra
 menus, duplicate choices, individual reserve switching, independent online
@@ -451,10 +454,10 @@ as reproducible cases rather than repeatedly changing several systems at once.
    → reconnect → save/load → leave.
 3. Build one MSVC native extension and put that exact artifact in both patchers.
    Record source commit, module/game/patcher hashes and compatibility ID.
-4. **Gate automatic publication before merging.** The current workflow publishes
-   on main. Promote the exact qualified patchers, or hold new main artifacts
-   until their qualification finishes. A fresh native rebuild requires renewed
-   qualification; a matching version label is insufficient.
+4. **Keep publication separate from building.** Build CI has no publication
+   permissions. The manual promotion workflow requires a committed qualification
+   manifest and verifies the source commit, successful CI run and all artifact
+   hashes before publishing. It does not rebuild the native extension.
 5. Test the downloaded Windows and Linux patchers, their bundled module identity,
    install behavior and the resulting game. Record any unavailable physical
    Windows/controller coverage rather than claiming it.
@@ -475,19 +478,10 @@ unexplained omissions; every claimed minigame has a completed live scenario;
 the installed save is preserved; and the published download matches the tested
 build. Open or unverified work remains visible and is never relabeled complete.
 
-## Immediate next action
+## Qualification record
 
-Continue the existing private work. Core run `20261026-155436/result.json`
-passed party, every battle owner, all individual reserve directions, replacement
-and defeat. Four real clients now passed duplicate NPC lineups in frames 19/18/21
-with measured 185-pixel visible heights, separate P3/P4 Rainbow control and leaving
-mid-dialogue. Controller coded Host/Join, saved-game navigation and Options slider
-editing have private input evidence.
-
-Clock puzzle 2 and the implemented flight/fishing/platformer/trial/Rainbow modes
-have private participation and outcome evidence. Re-run the integrated scenarios
-with explicit connection checks after the recovery fixes, and check the new seat
-release latch and clock puzzle 4 loop. Finish local controller reset/skin checks,
-guest interactions, shared office controls and wider combat scenarios. Source
-version 1.2.0 is being prepared; final MSVC artifacts, installation and publication
-remain pending. Preserve the latest installed save, not a prior test profile.
+Use [the release manifest](qa/releases/1.2.0.json) and
+[coverage report](qa/README.md) for the tested source, downloadable-file hashes,
+game/native identity, installation checks and concrete validation limits.
+The broader scenarios in section 7 remain regression targets; a passing sampled
+release check does not establish every possible attack, purchase or ending.

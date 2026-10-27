@@ -321,3 +321,49 @@
   office immediately. The return condition now matches exactly 6 AM, with a
   structural regression check. A new matching artifact must pass the office
   scenario before installation or publication.
+
+### Version 1.2.0 release qualification
+
+- CI run `40465128131`, source `c4649affbb2a93968051d3841ea3aea22a4322e1`,
+  provides the final Windows and Linux patchers. Both were downloaded and run;
+  both preserve an existing profile and produce identical game data
+  `4217cb53736c6c0cb2b9997d9ba7765aed6e8052d2df8c90f986901738b55928`
+  with MSVC native module
+  `7e3501f5bd5774922e9a2fa8d16ab6c722a6785e23f3191ef969d512bf406d02`.
+  This is exactly the data/module used in the final live scenarios. The final
+  source differs from runtime test source `1830296` only in documentation.
+- Two real clients passed party ownership, independent browsing, duplicate and
+  locked choices, delayed skin receipts, all four battle owners with mouse input,
+  individual reserve changes in both directions, automatic replacement and
+  defeat. Guest walking advances the encounter timer; neutral input stops it.
+  Guest chest/NPC interactions and separate cameras/world labels passed.
+- Four real clients passed duplicate NPC groups in scenes 19/18/21, all with
+  185-pixel visible heights, personal P3/P4 Rainbow movement, all four battle
+  owners/reserve pairs with keyboard input, and leaving mid-conversation.
+- Flight, fishing, FNaF 57, Foxy.exe and Rainbow participation/outcome scenarios
+  passed on the exact game files. Clock puzzles 2/4 applied one shared reward.
+  The office stayed open at midnight, accepted a guest changing its actual
+  camera counter, and returned both clients at 6 AM.
+- Two simulated local controllers passed title/file/party navigation, owned
+  duplicate/skin/reset actions, valid Start, separate walking and Chips/Bytes
+  toolbar entry with P2 Back. Options entry and P1 Back passed; settings remain
+  host controlled. Options slider editing also passed.
+- Connection recovery passed with added RTT/jitter: a five-second interruption
+  resumed in about six seconds without repeating held confirm; a 35-second
+  interruption expired the seat and allowed a fresh join. The 30-minute mixed
+  session retained fresh diagnostics and stable party object counts; its only
+  nonplaying samples were the deliberate interruption. Frame-transition memory
+  read failures are retained as instrumentation observations, not game crashes.
+- Two native clients on the public Worker passed coded `0042` and open lobby
+  discovery/join, personal movement, a connection beyond the former keepalive
+  failure point, host closure and guest leaving. Guest saves stayed unchanged.
+- The installed copy was backed up immediately before updating. Its latest
+  profile, other save/settings files, public endpoint, player name, Proton prefix
+  and both desktop launchers were retained. The existing launcher starts the
+  updated game; F10 opens and connects its lobby; clean closure leaves the saved
+  profile byte-for-byte unchanged. Both final patchers are in its Patchers folder.
+- [The qualification record](qa/releases/1.2.0.json) pins the exact downloadable
+  files. [Coverage and limits](qa/README.md) distinguish Proton from physical
+  Windows, simulated from physical controllers, and outcome fixtures from full
+  manual course runs. Package audit found no game archives, profiles, controller
+  test files or known credential patterns; licenses and notices are included.

@@ -96,6 +96,10 @@ loadout and Options are shared screens; the host controls save/file/settings
 changes. Guests keep their own game saves. Cosmetic preferences are stored
 separately in `FWUM-skins.ini`.
 
+[Release qualification and test coverage](qa/README.md) records the exact
+patcher hashes, two/four-client Proton checks, simulated-controller coverage
+and validation limits.
+
 ---
 
 ## Getting it

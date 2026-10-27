@@ -27,4 +27,11 @@ capacity limits.
 
 The patcher downloads the tested FNaF World Ultra 3.0.9 (in-game title 3.1.0) and Local Multiplayer 0.0.4, or uses your existing copies. Game files are built on each player's computer.
 
+Validated with two and four real Windows game processes under Proton on Steam
+Deck, two simulated local controllers, and native clients on the public relay.
+Both patchers produce identical tested game/native files. Physical Windows and
+physical-controller testing are not claimed; minigame outcome checks include
+fixtures rather than full manual course playthroughs.
+[Qualification and coverage](https://github.com/YesterMester/FNAF-World-Ultra-Multiplayer-/blob/main/qa/README.md).
+
 [Full instructions](https://github.com/YesterMester/FNAF-World-Ultra-Multiplayer-#getting-it) · [Changelog](https://github.com/YesterMester/FNAF-World-Ultra-Multiplayer-/blob/main/CHANGELOG.md)
