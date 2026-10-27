@@ -273,3 +273,23 @@
 - Do not use the old private `prepare-final-install.py`: it restores a lab save.
   Re-read/back up the latest installed profile immediately before installation,
   and preserve it byte for byte while replacing packaged files.
+
+### Packaged-artifact qualification and two follow-up fixes
+
+- Both downloaded patchers from source `c5f0822` built identical game data and
+  embedded the exact shared MSVC native module. Both preserved an existing
+  private save byte for byte. The first real pair passed independent roster
+  pages, explicit slot ownership, duplicate selection and locked selection.
+- A private relay fixture delayed a valid skin confirmation by five seconds.
+  The host applied the cosmetic, but the guest discarded the late confirmation
+  after the three-second UI timeout, leaving its preference unchanged. Skin
+  receipts now survive that timeout and scene changes, with bounded pending
+  storage and ordered per-character confirmations. Older receipts cannot
+  overwrite a newer accepted preference; session release clears the receipts.
+- Ultra's original encounter countdown and trigger required P1's moving flag.
+  They now accept each occupied moving walker through one logical OR event,
+  retaining the original area/timer checks and one countdown per tick.
+- Release checksums list the two downloadable patchers. The separately verified
+  embedded native hash is a comment, rather than a checksum for an absent asset.
+- These fixes require fresh matching patchers and renewed live qualification.
+  The earlier candidate is not installed or published.

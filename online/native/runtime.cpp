@@ -95,7 +95,8 @@ struct Context {
         unsigned epoch = 0, sequence = 0, received = unsigned(-1), pending = 0;
         ULONGLONG pending_at = 0;
         std::wstring feedback;
-        int pending_base = 0, pending_skin = 0;
+        std::map<unsigned, std::pair<int, int>> skin_requests;
+        std::map<int, unsigned> confirmed_skins;
         std::set<int> restored;
         std::map<uint32_t, unsigned> filters;
     } party;
@@ -280,6 +281,7 @@ void release_session() {
     c.audio.clear(); c.audio_out = Json::array();
     c.seat = Json::object(); c.host_options = Json::object();
     c.request_pending = Json::object();
+    c.party.skin_requests.clear(); c.party.confirmed_skins.clear();
     c.reconnecting = c.leaving = c.resume_pending = false;
     c.retry_at = c.reconnect_until = c.resume_at = 0;
 }
@@ -510,8 +512,16 @@ void network() {
                 {"seq", m.at("seq")}, {"accepted", false}, {"message", "That party screen has closed."}});
             else if (c.party.requests.size() < 32) c.party.requests.push_back(m);
         } else if (type == "party-result" && !c.hosting) {
-            if (m.value("seq", 0u) == c.party.pending) {
-                if (m.value("accepted", false) && c.party.pending_base > 0) save_skin(c.party.pending_base, c.party.pending_skin);
+            const auto sequence = m.value("seq", 0u);
+            const auto skin = c.party.skin_requests.find(sequence);
+            if (skin != c.party.skin_requests.end()) {
+                const auto [base, selected] = skin->second;
+                if (m.value("accepted", false) && sequence > c.party.confirmed_skins[base]) {
+                    save_skin(base, selected); c.party.confirmed_skins[base] = sequence;
+                }
+                c.party.skin_requests.erase(skin);
+            }
+            if (sequence == c.party.pending || (!c.party.pending && sequence == c.party.sequence)) {
                 c.party.pending = 0; c.party.feedback = fwum::widen(m.value("message", ""));
             }
         } else if (type == "audio") { if (c.audio.size() < 128) c.audio.push_back(m); }
@@ -1762,9 +1772,14 @@ void party_online_tick() {
         if (p.pending) { p.feedback = L"Waiting for the host to confirm your choice..."; return; }
         Json request{{"type", "party-edit"}, {"version", 1}, {"seq", ++p.sequence}, {"epoch", p.epoch},
             {"revision", p.versions[p.slot - 1]}, {"row", p.slot}, {"command", command}, {"character", character}};
-        p.pending_base = command == "skin" ? p.characters[p.slot - 1] : 0; p.pending_skin = character;
         if (c.hosting) p.feedback = apply(player, request);
-        else { p.pending = p.sequence; p.pending_at = GetTickCount64(); send(request); p.feedback = L"Applying your choice..."; }
+        else {
+            if (command == "skin") {
+                p.skin_requests[p.sequence] = {p.characters[p.slot - 1], character};
+                if (p.skin_requests.size() > 32) p.skin_requests.erase(p.skin_requests.begin());
+            }
+            p.pending = p.sequence; p.pending_at = GetTickCount64(); send(request); p.feedback = L"Applying your choice...";
+        }
     };
     struct Page { int begin, end, category; };
     std::vector<Page> pages;

@@ -103,9 +103,14 @@ def main():
         ):
             raise SystemExit(f"{filename} differs from the tested artifact.")
         files[filename] = matches[0]
-        checksums.append(f"{wanted}  {filename}\n")
+        if filename != "FWUMOnline.mfx":
+            checksums.append(f"{wanted}  {filename}\n")
     sums = output / "SHA256SUMS.txt"
-    sums.write_text(f"# Source commit: {commit}\n" + "".join(checksums))
+    sums.write_text(
+        f"# Source commit: {commit}\n"
+        f"# Embedded FWUMOnline.mfx: {manifest['artifacts']['FWUMOnline.mfx']}\n"
+        + "".join(checksums)
+    )
     notes = output / "release-notes.md"
     notes.write_text(
         (root / ".github/RELEASE_NOTES.md").read_text()

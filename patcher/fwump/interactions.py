@@ -6,6 +6,7 @@ from .evb import Ids, c_gv, clone, t_long
 
 def add_interactions(m):
     count = 0
+    encounters = 0
     for frame_index in range(4, 9):
         f = m.frames[frame_index]
         ids = Ids(f)
@@ -43,5 +44,28 @@ def add_interactions(m):
             # the original chest/reward/transition actions execute.
             g.flags |= 0x1400
             count += 1
+        if frame_index == 4:
+            # Ultra decrements the shared encounter timer, and starts the next
+            # encounter, only while P1's moving flag is set. Include the other
+            # walkers once per tick while retaining the original timer/area
+            # conditions. Standing players must not generate encounters.
+            for g in f.events.groups:
+                timer = any(item.object_type == -1 and any(
+                    p.code == 49 and p.data[:2] == struct.pack("<H", 27)
+                    for p in item.params) for item in g.conditions + g.actions)
+                moving = next((index for index, c in enumerate(g.conditions)
+                               if c.object_info == hit and c.object_type == 2
+                               and c.num == -25 and len(c.params) == 1), None)
+                if not timer or moving is None:
+                    continue
+                for player in (2, 3, 4):
+                    m.add_or_branch(ids, g, moving, [
+                        c_gv(ids, m.G["p%d_active" % player], "=", t_long(1)),
+                        c_gv(ids, m.G["p%d_moving" % player], "=", t_long(1))])
+                g.flags |= 0x1400
+                encounters += 1
         m.sync_groups(f)
+    if encounters != 2:
+        raise RuntimeError("Unrecognized shared encounter movement events")
     m.log("shared world interactions accept every player at %d triggers" % count)
+    m.log("shared encounter timer and trigger accept every moving player")
