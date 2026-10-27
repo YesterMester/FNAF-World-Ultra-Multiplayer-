@@ -15,6 +15,36 @@ async function setup(t, options = {}) {
   return { relay, url, ...players(url, t), advance: ms => { clock += ms; } };
 }
 
+test('active application traffic keeps a client alive when automatic pong is unavailable', async t => {
+  const { open, relay } = await setup(t, { heartbeatMs: 40 });
+  const c = await open({}, { autoPong: false });
+  c.send({ type: 'hello', protocol: 2, build: BUILD, name: 'Active client' });
+  await c.next('welcome'); await c.next('rooms');
+  let pings = 0;
+  c.ws.on('ping', () => { ++pings; c.send({ type: 'browse' }); });
+  await new Promise(resolve => setTimeout(resolve, 220));
+  assert.ok(pings >= 3);
+  assert.equal(relay.lobby.peers.size, 1);
+  assert.equal(c.ws.readyState, 1);
+});
+
+test('party requests carry the authenticated member, reject replays and only the host confirms them', async t => {
+  const { connect } = await setup(t);
+  const h = await connect(), g = await connect(); const { room } = await host(h);
+  const seat = await join(g, room); h.send({ type: 'start' }); await g.next('started');
+  const request = { type: 'party-edit', version: 1, seq: 1, epoch: 7, revision: 2,
+    command: 'pick', row: 2, character: 1, slot: 0, member: 'forged' };
+  g.send(request);
+  assert.deepEqual(await h.next('party-edit'), { ...request, slot: 1, member: seat.member });
+  g.send(request); assert.equal((await g.next('error')).code, 'party');
+  g.send({ ...request, seq: 2, row: 9 }); assert.equal((await g.next('error')).code, 'party');
+  g.send({ type: 'party-result', seq: 1, member: seat.member, accepted: true, message: '' });
+  assert.equal((await g.next('error')).code, 'host_only');
+  h.send({ type: 'party-result', seq: 1, member: seat.member, accepted: false, message: 'That slot changed. Please choose again.' });
+  assert.deepEqual(await g.next('party-result'), { type: 'party-result', seq: 1,
+    accepted: false, message: 'That slot changed. Please choose again.' });
+});
+
 test('open lobbies appear live, host starts, native state and per-player controls are relayed', async t => {
   const { connect } = await setup(t);
   const h = await connect(), guest = await connect();
@@ -27,6 +57,8 @@ test('open lobbies appear live, host starts, native state and per-player control
   h.ws.send(state); assert.deepEqual(await guest.next(Buffer.isBuffer), state);
   guest.send({ type: 'input', slot: 0, buttons: 4096, lx: -8000, ly: 1234 });
   assert.deepEqual(await h.next('input'), { type: 'input', slot: 1, buttons: 4096, lx: -8000, ly: 1234 });
+  guest.send({ type: 'input', slot: 0, buttons: 0x0800, lx: -32768, ly: -1 });
+  assert.deepEqual(await h.next('input'), { type: 'input', slot: 1, buttons: 0x0800, lx: -32768, ly: -1 });
 });
 test('four-digit PIN preserves leading zeros, never appears in listings, and rejects guesses', async t => {
   const { connect } = await setup(t);
@@ -58,9 +90,13 @@ test('capacity includes host, build mismatches reject, and only host can start o
 test('leaving clears remote controls, rebalances slots, and a host closing cleanly removes the lobby', async t => {
   const { connect, relay } = await setup(t);
   const h = await connect(), g1 = await connect(), g2 = await connect(); const { room } = await host(h);
-  await join(g1, room); await join(g2, room);
+  await join(g1, room); const secondSeat = await join(g2, room);
+  const before = await g2.next(m => m.type === 'members' && m.members.length === 3);
+  assert.equal(before.members[2].id, secondSeat.member);
   g1.send({ type: 'leave' }); await g1.next('left'); await h.next('reset-inputs');
-  assert.equal((await g2.next(m => m.type === 'members' && m.members.length === 2)).slot, 1);
+  const after = await g2.next(m => m.type === 'members' && m.members.length === 2);
+  assert.equal(after.slot, 1);
+  assert.equal(after.members[1].id, secondSeat.member);
   h.ws.close(1000); await g2.next('closed'); assert.equal(relay.rooms.size, 0);
 });
 test('late joiners receive current state and a running session, and the host is asked for fresh state', async t => {

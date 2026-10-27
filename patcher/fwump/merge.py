@@ -134,7 +134,7 @@ class Merger:
         if any(i.object_info == oi for i in f.instances):
             return
         it = Instance()
-        it.handle = len(f.instances)
+        it.handle = max((i.handle for i in f.instances), default=-1) + 1
         it.object_info = oi
         it.x = -400
         it.y = -400
@@ -153,6 +153,7 @@ class Merger:
                  "keyboard_p1", "walk_mask", "confirm_ready", "previous_mask"]
         for k in (2, 3, 4):
             names += ["p%d_mask" % k, "p%d_active" % k, "p%d_moving" % k]
+        names += ["online_session"]
         self.G = {n: self.alloc_global("mp_" + n) for n in names}
 
     # ------------------------------------------------------------- extension
@@ -354,6 +355,7 @@ class Merger:
                          t_op("*"), t_func(F_MIN), t_long(1), t_comma(), t_gv(G_OWN), t_op("+"),
                          t_long(1), t_op("-"), t_gv(G_KB), t_close()),
             ]
+        self.turn_owner_actions = owner_actions
 
         movb = X("mov button")
         plr = X("plr character")
@@ -518,14 +520,17 @@ class Merger:
     TINTS = {2: (110, 160, 255), 3: (255, 235, 90), 4: (255, 120, 120)}
 
     def companions(self):
-        """Players 2-4 each walk their own (tinted) Freddy around the overworld. They
-        stay near player 1 and hide during battles."""
-        f = self.frame(OVERWORLD)
+        """Use Ultra's movement and collision in the overworld and underground."""
+        for f in [*self.frames[4:9], self.frames[20]]:
+            self._companions(f)
+
+    def _companions(self, f):
         ids = Ids(f)
         G = self.G
-        b0 = self.blocks(f)[0]
         hit = self.oi("plr hitbox", f)
-        spr = self.oi("plr overworld", f)
+        flight = f is self.frames[23]
+        spr = self.oi("plr overworld" if f is self.frames[4] else "spr plane foxy" if flight else
+                      "spr player" if f is self.frames[20] else "plr sprite", f)
         joy = self.oi("obj joy body", f)
         T = self.otype
         layer_of = next(i.layer for i in f.instances if i.object_info == hit)
@@ -541,7 +546,14 @@ class Merger:
             if tmpl_setpos:
                 break
         if tmpl_setpos is None:
-            raise MergeError("walker follow event not found")
+            # Some underground frames set X/Y independently. The same relative
+            # position parameter from the overworld is valid in those frames.
+            tmpl_setpos = next((clone(a) for g in self.frames[4].events.groups for a in g.actions
+                                if a.object_info == self.oi("plr overworld", self.frames[4]) and
+                                a.num == 1 and a.params and a.params[0].code == 16 and
+                                struct.unpack_from("<H", a.params[0].data)[0] == hit), None)
+        if tmpl_setpos is None:
+            raise MergeError("walker follow event not found in %r" % f.name)
         # the group of solid objects (barriers, locks) Ultra's walker can't pass
         solid = next((c.params[0].data for g in f.events.groups for c in g.conditions
                       if c.object_info == hit and c.num == -4 and len(c.params) == 3 and
@@ -611,12 +623,14 @@ class Merger:
             sk = clone_obj(spr, "mp walker %d" % k, self.TINTS[k])
             ACT, MOV, MK = G["p%d_active" % k], G["p%d_moving" % k], G["p%d_mask" % k]
             mk = (t_gv(MK),)
+            if f is self.frames[20] or flight:
+                add([cond(ids, -3, -1, flags=0)], [act(T(hk), 17, hk, [p_expr(t_long(13 if flight else 12))])])
             # who controls this walker, and is it in play?
             add([cond(ids, -1, -1)], [a_set_gv(ACT, t_long(0)), a_set_gv(MOV, t_long(0))])
             add([c_gv(ids, G["keyboard_p1"], "=", t_long(0))], [a_set_gv(MK, t_long(1 << (k - 1)))])
             add([c_gv(ids, G["keyboard_p1"], "=", t_long(1))], [a_set_gv(MK, t_long(1 << (k - 2)))])
-            add([c_compare(ids, (t_gv(G["pads"]), t_op("+"), t_gv(G["keyboard_p1"])), ">=", (t_long(k),)),
-                 flag_off(hit, 1)],
+            add([c_compare(ids, (t_gv(G["pads"]), t_op("+"), t_gv(G["keyboard_p1"])), ">=", (t_long(k),))] +
+                ([] if flight else [flag_off(hit, 1)]),
                 [a_set_gv(ACT, t_long(1))])
             # not in play: wait (hidden) on top of player 1
             add([c_gv(ids, ACT, "=", t_long(0))], [act(T(sk), 26, sk), act(T(hk), 4, hk),
@@ -643,11 +657,11 @@ class Merger:
                     [act(T(hk), 6, hk, [Param(15, expr(speed))]), act(T(hk), 23, hk, [p_expr(t_long(d))]),
                      act(T(sk), 23, sk, [p_expr(t_long(d))]), act(T(hk), 5, hk), a_set_gv(MOV, t_long(1))])
             # stay within a screen of player 1; never get stuck inside scenery
-            for axis, lim in ((11, 360), (1, 200)):
+            for axis, lim in (() if flight else ((11, 360), (1, 200))):
                 src = x if axis == 11 else y
                 setter = 2 if axis == 11 else 3
                 for op, cmpop in (("+", ">"), ("-", "<")):
-                    add([c_gv(ids, ACT, "=", t_long(1)),
+                    add([c_gv(ids, ACT, "=", t_long(1)), c_gv(ids, G["online_session"], "=", t_long(0)),
                          c_compare(ids, (src(hk),), cmpop, (src(hit), t_op(op), t_long(lim)))],
                         [act(T(hk), setter, hk, [p_expr(src(hit), t_op(op), t_long(lim))])])
             stuck = [[cond(ids, T(hk), -23, hk, [p_expr(x(hk)), p_expr(y(hk))])]]
@@ -660,11 +674,13 @@ class Merger:
                 [setpos(sk, hk), act(T(sk), 61, sk, [p_expr(layer(hit))]),
                  act(T(hk), 61, hk, [p_expr(layer(hit))])])
             add([c_gv(ids, ACT, "=", t_long(1)), c_gv(ids, MOV, "=", t_long(1))],
-                [act(T(sk), 17, sk, [Param(10, struct.pack("<h", 1))])])
+                [act(T(sk), 17, sk, [Param(10, struct.pack("<h", 0 if flight else 1))])])
             add([c_gv(ids, ACT, "=", t_long(1)), c_gv(ids, MOV, "=", t_long(0))],
                 [act(T(hk), 4, hk), act(T(sk), 17, sk, [Param(10, struct.pack("<h", 0))])])
-        start = getattr(self, "top_count", 0)
-        b0[start:start] = events
+        # A frame-specific offset from the battle frame can fall inside another
+        # frame's child tree. Run after Ultra has initialized/moved P1, outside
+        # its source groups, and before the later identity presentation events.
+        self.blocks(f)[-1].extend(events)
         self.sync_groups(f)
         self.log("companions: players 2-4 can walk in %r" % f.name)
 
@@ -759,6 +775,9 @@ class Merger:
 
     # ------------------------------------------------------------------ output
     def write(self, out_dir):
+        for f in self.frames:
+            if any(not g.actions for g in f.events.groups):
+                raise MergeError("compiled event without an action/no-op in %r" % f.name)
         os.makedirs(out_dir, exist_ok=True)
         objchunks = build_object_chunks(self.ultra, self.objs)
         frame_data = {}

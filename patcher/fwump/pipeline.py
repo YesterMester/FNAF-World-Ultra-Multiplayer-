@@ -7,7 +7,7 @@ from .merge import OVERWORLD, Merger, MergeError
 from .online import add_online, compatibility_id, find_extension, write_settings
 from .launcher import write_launcher
 
-VERSION = "1.1.1"
+VERSION = "1.2.0"
 
 
 def build(ultra_dir, mp_exe, out_dir, log=print, debug=False, test_jump=False, baseline=False,
@@ -24,11 +24,14 @@ def build(ultra_dir, mp_exe, out_dir, log=print, debug=False, test_jump=False, b
         for f in m.frames:
             # in the overworld every player has their own walker, so player 1's
             # walker only listens to player 1's controller there
-            total += m.mirror_keys(f, walk_mask_tokens=walk if f.name == OVERWORLD else None)
+            total += m.mirror_keys(f, mask_tokens=walk if f in [m.frames[i] for i in (14, 23, 24, 25, 26)] else None,
+                                   walk_mask_tokens=walk if f in [*m.frames[4:9], m.frames[20]] else None)
         log("controller support added to %d keyboard events" % total)
         m.battle_coop()
         if companions:
             m.companions()
+        from .minigames import add_minigames
+        add_minigames(m)
     if debug:
         m.debug_dump()
     if test_jump:
@@ -61,16 +64,20 @@ and Steam runtime automatically. For Gaming Mode, add the EXE to Steam as a
 non-Steam game and force Proton in its Compatibility settings.
 
 Controllers (Xbox-style, up to 4; Steam Deck controls count as controller 1):
-  Left stick / D-pad   walk (everyone has a Freddy), move in minigames
+  Left stick / D-pad   walk / menu focus / attack highlight
   A                    confirm / jump (minigames) / pick the highlighted attack
   B (hold)             run away from a battle (same as holding R)
   X                    fire (minigames)
   Back / View (hold)   show the map (same as holding Tab)
-  RB                   switch party in battle
+  RB                   swap only the acting character with its reserve
+  Start                world toolbar / P1 starts a valid party
+  Party editor         B: next owned slot; X: reset yours; Y: skin; LB/RB: category
+  Options sliders      A: edit; Left/Right: adjust; A/B: done
 
-Overworld: players 2-4 each walk their own tinted Freddy (P2 dark blue-grey,
-P3 golden, P4 red). Player 1's Freddy is the one that talks, opens chests and
-starts battles; the others stay within a screen of player 1.
+Overworld: each player appears as their first assigned active character, with
+optional unlocked cosmetics. Online cameras follow each player in the shared
+area. NPC conversations show every current player's first character side by side.
+Local co-op shares a camera. Travel, story and minigame outcomes are shared.
 
 Co-op battles: every attack turn belongs to one player. The player whose turn it
 is picks the attack on their controller (D-pad/stick up and down, then A); the
@@ -88,9 +95,13 @@ Playing online: click Online co-op or
 press F10. Host game makes a visible lobby; leave Code empty for an open lobby,
 or use exactly four digits. Friends select the lobby, enter its code if needed,
 and choose Join selected. The host chooses Start co-op. Everyone runs their own
-copy, and the host controls the save and mouse menus. Keyboard guests use
-WASD/arrows, Z/Enter to confirm, R to flee, Tab for the map, and E to switch party.
-Native mode assigns one player per computer and handles keyboard P1 automatically.
+copy, and the host owns the shared simulation and save. D-pad/A/B operate menus. Keyboard guests use
+WASD/arrows, Z/Enter to confirm, R to flee, Tab for the map, and E to swap only the acting slot with its reserve.
+Native mode assigns one player per computer. The party editor allows duplicate
+picks and independent online roster browsing; edit only your outlined P# slots.
+Fishing, clock rooms, Foxy Fighters, FNaF 57, Foxy.exe and Rainbow accept co-op
+participants. Mediocore Night shares its office/cameras/tasks; B leaves the round.
+Skins are cosmetic and stored separately in FWUM-skins.ini.
 The public lobby service is included in the official patchers. Hosting and
 joining are free and need no router setup or player account.
 """ % VERSION

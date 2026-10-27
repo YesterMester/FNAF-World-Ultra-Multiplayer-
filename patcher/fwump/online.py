@@ -1,11 +1,13 @@
 """Inject the native lobby/input/replication extension into the merged game."""
 import hashlib
+import json
 import os
 import struct
 import sys
 from pathlib import Path
 
-from .evb import Ids, act, a_set_gv, c_compare, clone, cond, expr, group, p_expr, t_ext, t_close, t_long, t_objexp, t_gv
+from .evb import (F_MAX, Ids, act, a_add_gv, a_set_gv, c_compare, clone, cond, expr, group,
+                  p_expr, t_ext, t_close, t_comma, t_func, t_long, t_objexp, t_gv, t_op, t_str)
 from .fusion import EXPR_PARAM_CODES, ObjectDef, Param
 from .merge import KEYMAP, MergeError
 
@@ -68,6 +70,20 @@ def add_online(m, module):
     struct.pack_into("<IIIII", props, 70, 20, 20, 0, 0, 0)
     o.props = bytes(props)
     m.objs.append(o)
+    from .combat import add_combat
+    add_combat(m, otype, o.index)
+    from .party import add_party
+    party_ui = add_party(m, otype, o.index)
+    from .identity import add_identity
+    player_avatars = add_identity(m)
+    player_avatars.update(getattr(m, "minigame_avatars", {}))
+    from .interactions import add_interactions
+    add_interactions(m)
+    from .controls import add_controls
+    control_views = add_controls(m, otype, o.index)
+    for frame, buttons in getattr(m, "minigame_buttons", {}).items():
+        control_views.setdefault(frame, {}).update(bound_buttons=buttons,
+            keyboard_global=m.G["keyboard_p1"], players_global=m.G["players"])
 
     def infinite_loop(a):
         if a.object_type != -2 or a.num != 12 or len(a.params) != 3:
@@ -174,7 +190,8 @@ def add_online(m, module):
             if any(c.object_type >= 32 and c.num == -87 and m._objparam(c) in move_buttons for c in g.conditions):
                 # The host's mouse follows the same owner as controller input.
                 # Offline mouse assistance retains its original behavior.
-                g.conditions.append(cond(ids, otype, -81 - 32, o.index, [p_expr(t_gv(m.G["turn_mask"]))]))
+                g.conditions.append(c_compare(ids, (t_ext(otype, 21, o.index),
+                    t_gv(m.G["turn_mask"]), t_close()), "=", (t_long(1),)))
             actions = []
             for a in g.actions:
                 actions.append(a)
@@ -211,12 +228,28 @@ def add_online(m, module):
             if idx in (19, 20, 24, 26, 28, 29, 30, 31):
                 conditions.append(condition(25))
             return conditions
-        blocks[0][0:0] = [
-            group([cond(ids, -1, -1)], [act(otype, 80, o.index, [p_expr(t_long(frame_index))])]),
+        prefix = [
+            group([cond(ids, -1, -1)], [act(otype, 80, o.index, [p_expr(t_long(value)) for value in
+                (frame_index, next(iter(move_buttons)), party_ui["icon"], m.oi("hud switch party"), party_ui["done"], party_ui["reset"],
+                 party_ui["category"], party_ui["previous"], party_ui["following"], party_ui["cards"],
+                 *player_avatars.get(frame_index, [-1, -1, -1, -1]))] +
+                [p_expr(t_str(json.dumps(dict(party_ui, **control_views.get(3, {})) if frame_index == 3 else control_views.get(frame_index, {}), separators=(",", ":"))))])]),
             group([condition(17)], [act(-3, 2, params=[p_expr(*expression(2))])]),
             group([condition(21)], [act(otype, 83, o.index), act(-3, 5)]),
-            group([condition(22)], [a_set_gv(m.G["keyboard_p1"], t_long(0))]),
+            group([cond(ids, -1, -1)], [a_set_gv(m.G["online_session"], t_long(0))]),
+            group([condition(22)], [a_set_gv(m.G["keyboard_p1"], t_long(0)),
+                                   a_set_gv(m.G["online_session"], t_long(1)),
+                                   a_set_gv(m.G["walk_mask"], t_long(1))]),
         ]
+        # Joining from a shop, dialogue or underground frame must immediately
+        # update participant counts there; the overworld is not the only entry.
+        prefix.append(group([cond(ids, -1, -1)], [a_set_gv(m.G["pads"], t_long(0))]))
+        for pad in range(4):
+            prefix.append(group([condition(0, p_expr(t_long(pad)))], [a_add_gv(m.G["pads"], t_long(1))]))
+        prefix.append(group([cond(ids, -1, -1)], [a_set_gv(m.G["players"],
+            t_func(F_MAX), t_long(1), t_comma(), t_gv(m.G["pads"]), t_op("+"),
+            t_gv(m.G["keyboard_p1"]), t_close())]))
+        blocks[0][0:0] = prefix
         for audio_id, a in enumerate(audio_events):
             blocks[-1].append(group(callback(23, audio_id), [a, audio_hook(-1, a)]))
         for key, a in music.items():

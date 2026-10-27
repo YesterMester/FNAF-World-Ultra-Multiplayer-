@@ -5,7 +5,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   native:
@@ -20,6 +20,16 @@ jobs:
           arch: x86
       - name: Build the native online extension once for both patchers
         run: python online/build_native.py
+      - name: Check native input, snapshots, images and encounter ownership
+        shell: pwsh
+        run: |
+          foreach ($case in @('input', 'snapshot', 'images', 'ownership', 'navigation')) {
+            $output = Join-Path $env:RUNNER_TEMP "fwum-$case-test.exe"
+            cl /nologo /std:c++17 /EHsc /O2 "online/native/${case}_test.cpp" "/Fe:$output"
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            & $output
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
       - uses: actions/upload-artifact@v4
         with:
           name: FWUM-Online-Extension
@@ -69,48 +79,3 @@ jobs:
         with:
           name: ${{ matrix.name }}
           path: dist/*
-
-  release:
-    needs: build
-    if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
-        with:
-          path: dist
-      - name: Make the Linux build executable
-        run: chmod +x dist/FWUM-Patcher-Linux-SteamDeck/*
-      - name: Prepare checksums and release notes
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-          import hashlib, os
-          names = ['FWUM-Patcher-Windows.exe', 'FWUM-Patcher-Linux-SteamDeck']
-          sums = []
-          for name in names:
-              path = next(p for p in Path('dist').rglob(name) if p.is_file())
-              sums.append(f'{hashlib.sha256(path.read_bytes()).hexdigest()}  {name}\n')
-          sha = os.environ['GITHUB_SHA']
-          Path('dist/SHA256SUMS.txt').write_text(f'# Source commit: {sha}\n' + ''.join(sums))
-          source = f"{os.environ['GITHUB_SERVER_URL']}/{os.environ['GITHUB_REPOSITORY']}/tree/{sha}"
-          notes = Path('.github/RELEASE_NOTES.md').read_text()
-          Path('release-notes.md').write_text(notes + f'\nSource: [{sha[:12]}]({source}).\n')
-          PY
-      - name: Advance the rolling latest tag to this build
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh api --method PATCH "repos/$GITHUB_REPOSITORY/git/refs/tags/latest" -f "sha=$GITHUB_SHA" -F force=true
-      - uses: softprops/action-gh-release@v2
-        with:
-          tag_name: latest
-          target_commitish: ${{ github.sha }}
-          name: FNaF World Ultra Multiplayer v1.1.1 — Keyboard focus and encounters
-          body_path: release-notes.md
-          make_latest: true
-          fail_on_unmatched_files: true
-          files: |
-            dist/FWUM-Patcher-Windows/*
-            dist/FWUM-Patcher-Linux-SteamDeck/*
-            dist/SHA256SUMS.txt
-            LICENSE

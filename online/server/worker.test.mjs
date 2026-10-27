@@ -55,6 +55,22 @@ test('worker: health and unknown paths', async () => {
   assert.equal((await fetch(`http://127.0.0.1:${port}/`)).status, 404);
   assert.equal((await fetch(`http://127.0.0.1:${port}/lobbies`)).status, 426);
 });
+test('worker: authenticated party edits and scene-tagged input reach the host', async t => {
+  const { connect } = players(url(), t, 5000); const b = build('4');
+  const h = await connect(b), g = await connect(b);
+  const { room } = await host(h); const seat = await join(g, room);
+  h.send({ type: 'start' }); await g.next('started');
+  const request = { type: 'party-edit', version: 1, seq: 1, epoch: 7, revision: 2,
+    command: 'pick', row: 2, character: 1, slot: 0, member: 'forged' };
+  g.send(request);
+  assert.deepEqual(await h.next('party-edit'), { ...request, slot: 1, member: seat.member });
+  g.send(request); assert.equal((await g.next('error')).code, 'party');
+  h.send({ type: 'party-result', seq: 1, member: seat.member, accepted: false, message: 'That slot changed.' });
+  assert.deepEqual(await g.next('party-result'), { type: 'party-result', seq: 1, accepted: false, message: 'That slot changed.' });
+  g.send({ type: 'input', slot: 0, buttons: 4096, lx: 0, ly: 0, frame: 26, epoch: 7 });
+  assert.deepEqual(await h.next('input'), { type: 'input', slot: 1, buttons: 4096, lx: 0, ly: 0, frame: 26, epoch: 7 });
+  h.ws.close(1000); await g.next('closed');
+});
 test('worker: a dropped guest resumes its seat', async t => {
   const { connect } = players(url(), t, 5000); const b = build('2');
   const h = await connect(b), g = await connect(b);

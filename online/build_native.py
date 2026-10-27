@@ -61,6 +61,9 @@ def main():
     shutil.copyfile(ROOT / "online/notices/nlohmann-json-MIT.txt", args.out / "FWUM-THIRD-PARTY-NOTICES.txt")
     inc, json_inc = dependencies(args.out / "deps")
     src = ROOT / "online/native"
+    source_hash = lambda: {p.name: hashlib.sha256(p.read_bytes()).hexdigest()
+                           for p in sorted(src.iterdir()) if p.suffix in (".cpp", ".hpp", ".def")}
+    inputs = source_hash()
     output = args.out / "FWUMOnline.mfx"
     if Path(args.compiler).name.lower() in ("cl", "cl.exe"):
         command = [args.compiler, "/nologo", "/std:c++17", "/EHsc", "/O2", "/MT", "/LD", "/DWINVER=0x0602", "/D_WIN32_WINNT=0x0602",
@@ -73,6 +76,8 @@ def main():
                    "-I" + str(inc), "-I" + str(json_inc), str(src / "runtime.cpp"), str(src / "FWUMOnline.def"),
                    "-Wl,--no-insert-timestamp", "-o", str(output), str(inc.parent / "Lib/mmfs2.lib"), "-lwinhttp", "-luser32", "-lgdi32", "-ladvapi32"]
     subprocess.run(command, check=True, cwd=args.out)
+    if source_hash() != inputs:
+        raise RuntimeError("Native sources changed during compilation; rebuild before using this extension.")
     print("Built", output)
     print("SHA-256", hashlib.sha256(output.read_bytes()).hexdigest())
 

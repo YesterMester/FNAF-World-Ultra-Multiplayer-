@@ -8,8 +8,8 @@ export const build = (c = 'a') => c.repeat(64);
 export function players(url, t, timeoutMs = 2500) {
   const all = [];
   t.after(() => { for (const c of all) c.ws.terminate(); });
-  async function open(headers = {}) {
-    const ws = new WebSocket(url, { headers });
+  async function open(headers = {}, options = {}) {
+    const ws = new WebSocket(url, { ...options, headers });
     const messages = []; const waiters = [];
     ws.on('message', (data, binary) => {
       const msg = binary ? Buffer.from(data) : JSON.parse(data);

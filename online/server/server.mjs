@@ -36,7 +36,7 @@ export function createRelay({ now = Date.now, heartbeatMs = 15000, trustProxy = 
     sockets.set(p, ws); lobby.open(p);
     ws.on('error', () => {});
     ws.on('pong', () => { p.alive = true; });
-    ws.on('message', (data, binary) => lobby.message(p, data, binary));
+    ws.on('message', (data, binary) => { p.alive = true; lobby.message(p, data, binary); });
     ws.on('close', code => { sockets.delete(p); lobby.close(p, code); });
   });
   const heartbeat = setInterval(() => {
