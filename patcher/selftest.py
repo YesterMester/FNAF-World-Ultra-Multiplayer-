@@ -227,6 +227,13 @@ def test_game(path):
                         for group in battle.events.groups for c in group.conditions
                         if c.object_info in companion_hitboxes and c.num == -4 and len(c.params) == 3}
     check(companion_solids == {32806}, "companion obstacle probes use solid qualifier 32806 instead of triggers")
+    office = frames[33]
+    six_am = [group for group in office.events.groups if any(
+        c.object_type == -1 and c.num == -3 and evb.t_objexp(7, 80, 1289) in c.params[0].data
+        for c in group.conditions)]
+    check(len(six_am) == 1 and any(c.params[1].data == evb.p_cmp("=", evb.t_long(6)).data
+          for c in six_am[0].conditions if len(c.params) == 2),
+          "co-op office returns to world only at 6 AM rather than at 12 AM")
     tc = g.chunk(0x222F)
     stored = struct.unpack("<I", pc.decode(g))[0]
     check(stored == make_pame_checksum(bytes(g.data[tc.offset:pc.offset])), "protection checksum valid")

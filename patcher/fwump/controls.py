@@ -114,7 +114,7 @@ def add_controls(m, otype, online):
                         [
                             c_gv(ids, m.G["players"], ">", t_long(1)),
                             c_compare(
-                                ids, (t_objexp(7, 80, 1289),), ">=", (t_long(6),)
+                                ids, (t_objexp(7, 80, 1289),), "=", (t_long(6),)
                             ),
                         ],
                         [act(-3, 2, params=[p_expr(t_long(5))])],

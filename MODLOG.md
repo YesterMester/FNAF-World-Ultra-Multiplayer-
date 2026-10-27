@@ -303,3 +303,21 @@
   on name tags: the guest's camera kept the host tag near screen center. World
   labels now clear scrolling-independence so their coordinates follow their
   actors; NPC labels and the actual HUD retain their existing behavior.
+
+### Antigravity handoff and final office correction
+
+- Continued from committed fixes `3fc7899` and `9887a5c`: shared interaction
+  selection now filters player overlap before target flags, companion probes
+  use the solid obstacle qualifier, and companion spawn state resets per frame.
+  Wine WebSocket keepalive and active relay heartbeat behavior were corrected.
+- The downloaded `9887a5c` Windows and Linux patchers contain the same MSVC
+  module `7e3501f5bd5774922e9a2fa8d16ab6c722a6785e23f3191ef969d512bf406d02`.
+  They built identical compatible game data and preserved existing private saves.
+  Recorded checks passed two-client party/battle/reserves, guest chest and NPC
+  interaction, independent cameras, minigame outcome scenarios, clock puzzles,
+  Options and two simulated local controllers. Four-client final verification,
+  installation and publication were unfinished at the handoff.
+- Mediocore Night starts at 12 AM, so a numeric `>= 6` check ended the co-op
+  office immediately. The return condition now matches exactly 6 AM, with a
+  structural regression check. A new matching artifact must pass the office
+  scenario before installation or publication.
