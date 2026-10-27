@@ -220,6 +220,13 @@ def test_game(path):
             interaction.conditions[b[0]].object_type == -1 and interaction.conditions[b[0]].num == -28
             for b in branches[1:]),
             "overworld interaction line %d filters by overlapping player before target flags" % line)
+    companion_hitboxes = {o.index for o in objs if o.name in ("mp hitbox 2", "mp hitbox 3", "mp hitbox 4")}
+    check(bool(companion_hitboxes) and all(not (struct.unpack_from("<H", objs[oi].header, 4)[0] & 4)
+          for oi in companion_hitboxes), "companion hitboxes reset spawn flags on each frame entry")
+    companion_solids = {struct.unpack_from("<H", c.params[0].data, 2)[0]
+                        for group in battle.events.groups for c in group.conditions
+                        if c.object_info in companion_hitboxes and c.num == -4 and len(c.params) == 3}
+    check(companion_solids == {32806}, "companion obstacle probes use solid qualifier 32806 instead of triggers")
     tc = g.chunk(0x222F)
     stored = struct.unpack("<I", pc.decode(g))[0]
     check(stored == make_pame_checksum(bytes(g.data[tc.offset:pc.offset])), "protection checksum valid")

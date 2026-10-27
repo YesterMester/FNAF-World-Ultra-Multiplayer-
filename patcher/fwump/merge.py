@@ -557,7 +557,7 @@ class Merger:
         # the group of solid objects (barriers, locks) Ultra's walker can't pass
         solid = next((c.params[0].data for g in f.events.groups for c in g.conditions
                       if c.object_info == hit and c.num == -4 and len(c.params) == 3 and
-                      c.params[0].code == 1), None)
+                      c.params[0].code == 1 and c.other_flags & 1), None)
 
         def setpos(oi, parent):
             a = clone(tmpl_setpos)
@@ -573,6 +573,7 @@ class Merger:
             so = self.objs[src]
             hdr = bytearray(so.header)
             struct.pack_into("<h", hdr, 0, o.index)
+            struct.pack_into("<H", hdr, 4, struct.unpack_from("<H", hdr, 4)[0] & ~0x0004)
             if tint:
                 # RGB coefficient (stored blue, green, red, alpha); drawn only with
                 # the RGBA-filter ink flag set
