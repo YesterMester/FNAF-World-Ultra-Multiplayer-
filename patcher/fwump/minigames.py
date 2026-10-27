@@ -159,13 +159,15 @@ def clone_participants(m, f, personal, prefix):
 def add_clock(m):
     f = m.frames[20]
     source = list(f.events.groups)
-    if not (source[8].flags & 0x40 and source[22].conditions[0].num == -42):
+    if not (source[8].flags & 0x40 and source[22].conditions[0].num == -42
+            and source[23].actions[0].num == 76
+            and source[24].conditions[0].num == -41):
         raise RuntimeError("Unrecognized clock puzzle event tree")
     ids = Ids(f)
     b = m.blocks(f)[-1]
     for player in (2, 3, 4):
         mapping = {87: m.oi("mp hitbox %d" % player, f)}
-        for original in [*source[8:23], source[23], source[24]]:
+        for original in source[8:23]:
             copied = clone(original)
             for index, c in enumerate(copied.conditions):
                 if c.identifier:
@@ -181,6 +183,23 @@ def add_clock(m):
                 )
             copied.line = m.next_line()
             b.append(copied)
+    # Puzzle 4 has one shared contact latch per target. Independent copies of
+    # its named foreach loop also invoke P1's original callback: that used to
+    # release a guest's held target merely because P1 was elsewhere. Run the
+    # original loop once when anyone moves and release only unoccupied targets.
+    moving = next(i for i, c in enumerate(source[23].conditions)
+                  if c.object_info == 394 and c.object_type == 2 and c.num == -25)
+    outside = next(c for c in source[24].conditions
+                   if c.object_type == 2 and c.num == -4 and c.other_flags & 1)
+    for player in (2, 3, 4):
+        m.add_or_branch(ids, source[23], moving, [
+            c_gv(ids, m.G["p%d_active" % player], "=", t_long(1)),
+            c_gv(ids, m.G["p%d_moving" % player], "=", t_long(1))])
+        clear = clone(outside)
+        clear.identifier = ids.take()
+        remap_item(clear, {87: m.oi("mp hitbox %d" % player, f)})
+        source[24].conditions.append(clear)
+    source[23].flags |= 0x1400
     m.sync_groups(f)
     m.log(
         "clock co-op: each walker can push/collect puzzle targets against the shared timer/result"

@@ -293,3 +293,10 @@
   embedded native hash is a comment, rather than a checksum for an absent asset.
 - These fixes require fresh matching patchers and renewed live qualification.
   The earlier candidate is not installed or published.
+- Exact-build clock puzzle 4 testing exposed a shared contact-latch bug. A guest
+  entered a button while P1 stood elsewhere; the original named-loop callback
+  immediately reset that guest's pressed direction. The loop now runs once
+  when any participant moves, and releases a target only when all four hitboxes
+  are outside it. Inactive companions follow P1, retaining single-player behavior.
+  Guest copies still use the original puzzle interaction child tree. This event
+  correction leaves native inputs and the native module unchanged.
